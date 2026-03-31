@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, Image, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { View, Text, TextInput, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, RefreshControl } from 'react-native';
 import { Svg, Path } from 'react-native-svg';
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getSaleSeriesList } from '../../services/saleSeriesService';
@@ -10,14 +11,31 @@ import { config } from '../../config';
 
 const BASE_URL = config.RESOURCE_BASE_URL;
 
+// 节流函数
+function throttle<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let lastCall = 0;
+  return (...args: Parameters<T>) => {
+    const now = Date.now();
+    if (now - lastCall >= wait) {
+      lastCall = now;
+      func(...args);
+    }
+  };
+}
+
 const Shop = () => {
   const [activeTab, setActiveTab] = useState<'recommend' | 'cart'>('recommend');
   const [searchKeyword, setSearchKeyword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [seriesList, setSeriesList] = useState<SaleSeriesItem[]>([]);
   const [page, setPage] = useState(1);
   const searchTimer = useRef<number | null>(null);
+  const scrollTimer = useRef<number | null>(null);
   
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [cartLoading, setCartLoading] = useState(false);
@@ -34,10 +52,15 @@ const Shop = () => {
     loadUserId();
   }, []);
 
-  const fetchSaleSeriesData = async (isLoadMore = false) => {
-    if (loading) return;
+  const fetchSaleSeriesData = async (isLoadMore = false, isRefresh = false) => {
+    if (loading && !isRefresh) return;
 
-    setLoading(true);
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
     try {
       const response = await getSaleSeriesList({
         page: isLoadMore ? page + 1 : 1,
@@ -95,6 +118,7 @@ const Shop = () => {
       loadMockSeriesData(searchKeyword);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -376,13 +400,55 @@ const Shop = () => {
 
   const handleSearchInput = (text: string) => {
     setSearchKeyword(text);
+    
+    if (activeTab === 'recommend') {
+      if (searchTimer.current) {
+        clearTimeout(searchTimer.current);
+      }
+      
+      searchTimer.current = setTimeout(() => {
+        setPage(1);
+        fetchSaleSeriesData(false);
+      }, 500);
+    }
   };
 
   const loadMore = () => {
-    if (hasMore && !loading) {
+    if (hasMore && !loading && !refreshing) {
       fetchSaleSeriesData(true);
     }
   };
+
+  // 使用节流包装的 loadMore 函数
+  const throttledLoadMore = useRef(throttle(loadMore, 300)).current;
+
+  // 滚动事件处理（带节流）
+  const handleScroll = (event: any) => {
+    if (!hasMore || loading || refreshing) return;
+
+    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+    const isNearBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - 50;
+
+    if (isNearBottom) {
+      if (scrollTimer.current) {
+        clearTimeout(scrollTimer.current);
+      }
+      scrollTimer.current = setTimeout(() => {
+        throttledLoadMore();
+      }, 200);
+    }
+  };
+
+  const onRefresh = useCallback(() => {
+    if (activeTab === 'recommend') {
+      fetchSaleSeriesData(false, true);
+    } else if (activeTab === 'cart') {
+      setRefreshing(true);
+      fetchCartData().finally(() => {
+        setRefreshing(false);
+      });
+    }
+  }, [activeTab]);
 
   const goToSeriesDetail = (saleSeriesId: string) => {
     router.push(`/shop/${saleSeriesId}`);
@@ -396,15 +462,17 @@ const Shop = () => {
     }
   }, [activeTab, userId]);
 
+  // 清理定时器，防止内存泄漏
   useEffect(() => {
-    if (activeTab === 'recommend') {
+    return () => {
       if (searchTimer.current) {
         clearTimeout(searchTimer.current);
       }
-      setPage(1);
-      fetchSaleSeriesData(false);
-    }
-  }, [searchKeyword, activeTab]);
+      if (scrollTimer.current) {
+        clearTimeout(scrollTimer.current);
+      }
+    };
+  }, []);
 
   const leftColumnItems = seriesList.filter((_, index) => index % 2 === 0);
   const rightColumnItems = seriesList.filter((_, index) => index % 2 === 1);
@@ -443,6 +511,10 @@ const Shop = () => {
           source={{ uri: imageUrl }} 
           style={styles.cartItemImage}
           resizeMode="cover"
+          contentFit="cover"
+          transition={200}
+          placeholder="#f5f5f5"
+          cachePolicy="memory-disk"
         />
         
         <View style={styles.cartItemInfo}>
@@ -509,7 +581,14 @@ const Shop = () => {
       </View>
 
       {activeTab === 'recommend' && (
-        <ScrollView style={styles.content}>
+        <ScrollView
+          style={styles.content}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#8069E1']} />
+          }
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+        >
           <View style={styles.recommendContent}>
             <View style={styles.search1}>
               <Svg width={20} height={20} viewBox="0 0 1026 1024">
@@ -541,6 +620,10 @@ const Shop = () => {
                       source={typeof item.saleCoverImage === 'string' ? { uri: item.saleCoverImage } : item.saleCoverImage}
                       style={styles.seriesImage}
                       resizeMode="cover"
+                      contentFit="cover"
+                      transition={300}
+                      placeholder="#f5f5f5"
+                      cachePolicy="memory-disk"
                     />
                     <View style={styles.seriesInfo}>
                       <Text style={styles.seriesName} numberOfLines={2}>{item.saleTitle}</Text>
@@ -568,6 +651,10 @@ const Shop = () => {
                       source={typeof item.saleCoverImage === 'string' ? { uri: item.saleCoverImage } : item.saleCoverImage}
                       style={styles.seriesImage}
                       resizeMode="cover"
+                      contentFit="cover"
+                      transition={300}
+                      placeholder="#f5f5f5"
+                      cachePolicy="memory-disk"
                     />
                     <View style={styles.seriesInfo}>
                       <Text style={styles.seriesName} numberOfLines={2}>{item.saleTitle}</Text>
@@ -586,7 +673,7 @@ const Shop = () => {
             </View>
 
             {hasMore && seriesList.length > 0 && (
-              <TouchableOpacity style={styles.loadMore} onPress={loadMore}>
+              <TouchableOpacity style={styles.loadMore} onPress={throttledLoadMore}>
                 {loading ? (
                   <ActivityIndicator color="#666" />
                 ) : (
@@ -634,9 +721,14 @@ const Shop = () => {
             </View>
           ) : (
             <>
-              <ScrollView style={styles.cartList}>
+              <ScrollView
+                style={styles.cartList}
+                refreshControl={
+                  <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#8069E1']} />
+                }
+              >
                 <View style={styles.cartHeader}>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.selectAllContainer}
                     onPress={handleSelectAll}
                   >
