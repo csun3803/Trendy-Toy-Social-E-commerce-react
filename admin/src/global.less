@@ -55,7 +55,7 @@ body,
 }
 
 .ant-layout {
-  min-height: 100vh;
+  height: 100%;
 }
 .ant-pro-sider.ant-layout-sider.ant-pro-sider-fixed {
   left: unset;
@@ -91,4 +91,158 @@ ol {
       }
     }
   }
+}
+
+// 表格紧凑样式 - 占满页面、行高更小
+
+// 整体布局撑满视口
+.ant-pro-layout,
+.ant-pro-layout .ant-layout {
+  height: 100vh;
+}
+
+// 侧边栏+内容区容器 - flex 横向布局
+.ant-pro-layout-container {
+  height: 100%;
+}
+
+// 主内容区 - 去掉默认 padding，撑满剩余空间
+.ant-pro-layout-content {
+  padding: 8px !important;
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+// page-container 内部内容区去 padding
+.ant-pro-page-container-children-content {
+  padding: 0 !important;
+}
+
+// page-container 自身也要撑满
+.ant-pro-page-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.ant-pro-page-container-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+// 内容区直系子容器（页面内容包裹层）- 撑满宽度，去掉默认 padding
+.ant-pro-layout-content > div {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0 !important;
+}
+
+// 仪表盘页面 - 居中限宽，不撑满
+.dashboard-page {
+  max-width: 1200px;
+  padding: 32px 40px;
+  align-self: center;
+  width: 100%;
+}
+
+.ant-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  .ant-card-head {
+    min-height: 40px;
+    padding: 0 12px;
+    flex-shrink: 0;
+    .ant-card-head-title {
+      padding: 8px 0;
+    }
+  }
+  .ant-card-body {
+    padding: 12px;
+    flex: 1;
+    overflow: auto;
+  }
+}
+
+// Card flex 布局支持
+.ant-card[style*="flex-direction: column"] {
+  .ant-card-body {
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+  }
+}
+
+// Table 在 flex 容器中自动撑满
+.ant-card-body {
+  .ant-tabs {
+    flex-shrink: 0;
+  }
+  .ant-table-wrapper {
+    flex: 1;
+    min-height: 0;
+    .ant-spin-nested-loading {
+      height: 100%;
+      .ant-spin-container {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        .ant-table {
+          flex: 1;
+          min-height: 0;
+          .ant-table-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            .ant-table-body {
+              flex: 1;
+              overflow: auto !important;
+            }
+          }
+        }
+        .ant-table-pagination {
+          flex-shrink: 0;
+        }
+      }
+    }
+  }
+}
+
+.ant-table {
+  .ant-table-thead > tr > th {
+    padding: 10px 12px !important;
+    font-size: 13px;
+  }
+  .ant-table-tbody > tr > td {
+    padding: 8px 12px !important;
+    font-size: 13px;
+  }
+  .ant-table-thead > tr > th,
+  .ant-table-tbody > tr > td {
+    line-height: 1.5;
+  }
+  // 表格内链接深蓝色
+  a {
+    color: #1a56db;
+    &:hover {
+      color: #1e40af;
+    }
+  }
+}
+
+.ant-pagination {
+  margin: 8px 0 !important;
+}
+
+.ant-table-wrapper .ant-table-pagination {
+  margin: 8px 0 !important;
 }

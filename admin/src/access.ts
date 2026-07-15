@@ -8,5 +8,7 @@ export default function access(
   return {
     canAdmin: currentUser && currentUser.access === 'admin',
     canMerchant: currentUser && currentUser.access === 'merchant',
+    canMerchantApproved: currentUser && currentUser.access === 'merchant' && currentUser.auditStatus === '已通过',
+    canMerchantPending: currentUser && currentUser.access === 'merchant' && currentUser.auditStatus !== '已通过',
   };
 }

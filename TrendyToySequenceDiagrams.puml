@@ -1,0 +1,184 @@
+
+@startuml 潮玩社交电商系统时序图
+skinparam sequenceMessageAlign center
+skinparam noteBackgroundColor #fffde6
+skinparam noteBorderColor #ffd700
+title 潮玩社交电商系统 - 核心业务时序图
+!pragma layout smetana
+
+actor "用户" as User
+boundary "App前端" as App
+control "订单服务" as OrderService
+control "购物车服务" as CartService
+control "用户服务" as UserService
+control "支付服务" as PaymentService
+database "数据库" as DB
+
+== 1. 用户登录流程 ==
+
+User -> App : 输入手机号/密码
+App -> UserService : 登录请求(loginDTO)
+UserService -> DB : 验证用户信息
+DB --> UserService : 返回用户数据
+UserService -> UserService : 生成JWT Token
+UserService --> App : 返回用户信息+Token
+App -> App : 保存Token到本地
+App --> User : 登录成功，跳转首页
+
+note right of UserService
+  验证用户账号密码
+  生成访问令牌
+end note
+
+== 2. 浏览商品添加购物车流程 ==
+
+User -> App : 浏览商品系列
+App -> App : 显示瀑布流商品列表
+User -> App : 点击商品详情
+App -> App : 展示商品系列信息
+User -> App : 选择商品款式并加入购物车
+App -> CartService : addToCart(request)
+CartService -> DB : 查询商品库存
+DB --> CartService : 返回库存信息
+CartService -> CartService : 检查是否已存在购物车项
+CartService -> DB : 创建/更新购物车项
+DB --> CartService : 保存成功
+CartService --> App : 返回购物车项
+App --> User : 添加成功提示
+
+note right of CartService
+  购物车项按店铺分组
+  支持数量调整
+end note
+
+== 3. 购物车管理流程 ==
+
+User -> App : 进入购物车页面
+App -> CartService : getCartList(userId)
+CartService -> DB : 查询购物车数据
+DB --> CartService : 返回购物车项列表
+CartService --> App : 返回完整购物车数据
+App -> App : 按店铺分组显示
+App --> User : 展示购物车
+
+User -> App : 选择商品/修改数量
+App -> App : 更新UI和选中状态
+App -> CartService : updateCartItem(item)
+CartService -> DB : 更新购物车数据
+DB --> CartService : 更新成功
+CartService --> App : 确认更新
+App --> User : 刷新显示
+
+== 4. 创建订单流程 ==
+
+User -> App : 点击结算
+App -> App : 收集选中商品
+App -> UserService : getUserIdFromToken()
+UserService --> App : 返回userId
+App -> UserService : getUserAddresses(userId)
+UserService -> DB : 查询收货地址
+DB --> UserService : 返回地址列表
+UserService --> App : 返回地址数据
+App -> App : 展示收货地址选择
+User -> App : 选择收货地址
+App -> App : 准备订单数据
+App -> OrderService : batchCreateOrders(request)
+OrderService -> OrderService : 验证商品库存
+OrderService -> DB : 创建订单记录
+OrderService -> OrderService : 生成订单号
+DB --> OrderService : 订单创建成功
+OrderService -> CartService : 清除已结算商品
+CartService -> DB : 删除购物车项
+DB --> CartService : 删除成功
+OrderService --> App : 返回订单列表
+App -> App : 清空购物车
+App --> User : 跳转订单详情页
+
+note right of OrderService
+  按店铺拆分为多个订单
+  计算运费和优惠
+  生成唯一订单号
+end note
+
+== 5. 订单支付流程 ==
+
+User -> App : 点击订单支付
+App -> App : 显示支付弹窗
+User -> App : 选择支付方式(微信/支付宝)
+App -> App : 确认支付
+App -> OrderService : payOrder(orderId, paymentMethod)
+OrderService -> PaymentService : 发起支付请求
+PaymentService -> PaymentService : 创建支付单
+PaymentService --> OrderService : 返回支付链接/参数
+OrderService -> DB : 更新订单支付状态为支付中
+DB --> OrderService : 更新成功
+OrderService --> App : 返回支付处理中
+App -> PaymentService : 调用支付SDK
+note over App, PaymentService
+  第三方支付流程
+  用户完成支付操作
+end note
+PaymentService --> App : 支付结果回调
+App -> OrderService : 查询订单状态
+OrderService -> DB : 查询订单
+DB --> OrderService : 返回订单信息
+OrderService --> App : 订单支付成功
+App -> App : 刷新订单状态
+App --> User : 支付成功提示
+
+== 6. 订单管理流程 ==
+
+User -> App : 进入订单中心
+App -> OrderService : getUserOrders(userId, params)
+OrderService -> DB : 查询订单列表
+DB --> OrderService : 返回订单数据
+OrderService --> App : 返回订单列表
+App -> App : 按状态分组显示
+App --> User : 展示订单列表
+
+... 取消订单 ...
+User -> App : 点击取消订单
+App -> App : 显示确认弹窗
+User -> App : 确认取消
+App -> OrderService : cancelOrder(orderId)
+OrderService -> DB : 更新订单状态为已取消
+DB --> OrderService : 更新成功
+OrderService -> OrderService : 退款处理（如已支付）
+OrderService --> App : 返回取消成功
+App -> App : 刷新订单列表
+App --> User : 提示订单已取消
+
+... 确认收货 ...
+User -> App : 点击确认收货
+App -> App : 显示确认弹窗
+User -> App : 确认收货
+App -> OrderService : confirmReceive(orderId)
+OrderService -> DB : 更新订单状态为已完成
+DB --> OrderService : 更新成功
+OrderService --> App : 返回确认成功
+App -> App : 刷新订单状态
+App --> User : 提示确认收货成功
+
+== 7. 售后申请流程 ==
+
+User -> App : 订单详情页点击申请售后
+App -> App : 显示售后申请弹窗
+User -> App : 选择售后类型(退款/退货)
+User -> App : 填写原因和金额
+User -> App : 提交申请
+App -> OrderService : createAfterSale(request)
+OrderService -> DB : 创建售后记录
+DB --> OrderService : 保存成功
+OrderService -> DB : 更新订单售后状态
+DB --> OrderService : 更新成功
+OrderService --> App : 返回申请成功
+App -> App : 刷新订单详情
+App --> User : 提示售后申请已提交
+
+note right of OrderService
+  售后状态流转:
+  处理中 -> 已完成/已拒绝
+end note
+
+@enduml
+

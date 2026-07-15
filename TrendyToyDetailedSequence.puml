@@ -1,0 +1,146 @@
+
+@startuml 潮玩社交电商系统详细时序图
+skinparam sequenceMessageAlign center
+skinparam noteBackgroundColor #e8f5e9
+skinparam noteBorderColor #4caf50
+title 潮玩社交电商系统 - 详细业务场景时序图
+
+!pragma layout smetana
+
+actor "用户" as User
+participant "App首页" as HomePage
+participant "购物车页面" as CartPage
+participant "结算页面" as CheckoutPage
+participant "订单页面" as OrderPage
+participant "订单服务" as OrderService
+participant "购物车服务" as CartService
+participant "用户服务" as UserService
+participant "地址服务" as AddressService
+database "订单数据库" as OrderDB
+database "购物车数据库" as CartDB
+database "用户数据库" as UserDB
+
+== 场景一：完整购物流程（从浏览到支付） ==
+
+User -> HomePage : 打开App，浏览商品
+HomePage -> HomePage : 加载推荐商品列表
+User -> HomePage : 点击商品系列进入详情
+HomePage -> HomePage : 跳转商品详情页
+User -> HomePage : 选择商品款式
+User -> HomePage : 点击加入购物车
+HomePage -> CartService : addToCart(request)
+CartService -> CartDB : 查询是否已存在该商品
+CartDB --> CartService : 返回查询结果
+alt 商品已在购物车
+    CartService -> CartDB : 更新商品数量
+else 商品不在购物车
+    CartService -> CartDB : 新增购物车项
+end
+CartDB --> CartService : 保存成功
+CartService --> HomePage : 返回购物车项
+HomePage -> HomePage : 显示添加成功提示
+User -> HomePage : 继续浏览/去购物车
+
+User -> HomePage : 点击底部购物车Tab
+HomePage -> CartPage : 切换到购物车页面
+CartPage -> CartService : getCartList(userId)
+CartService -> CartDB : 查询购物车数据
+CartDB --> CartService : 返回购物车项列表
+CartService --> CartPage : 返回完整购物车数据
+CartPage -> CartPage : 按店铺分组显示商品
+CartPage --> User : 展示购物车界面
+
+User -> CartPage : 勾选要购买的商品
+User -> CartPage : 调整商品数量
+CartPage -> CartService : updateCartItem(item)
+CartService -> CartDB : 更新购物车数据
+CartDB --> CartService : 更新成功
+CartService --> CartPage : 确认更新
+CartPage -> CartPage : 实时更新小计金额
+
+User -> CartPage : 点击结算按钮
+CartPage -> CheckoutPage : 传递选中商品，跳转到结算页
+CheckoutPage -> UserService : getUserIdFromToken()
+UserService --> CheckoutPage : 返回userId
+CheckoutPage -> AddressService : getUserAddresses(userId)
+AddressService -> UserDB : 查询用户收货地址
+UserDB --> AddressService : 返回地址列表
+AddressService --> CheckoutPage : 返回地址数据
+CheckoutPage -> CheckoutPage : 自动选中默认地址
+CheckoutPage --> User : 展示收货地址和商品信息
+
+User -> CheckoutPage : 确认订单信息
+User -> CheckoutPage : 点击提交订单
+CheckoutPage -> CheckoutPage : 准备订单数据(按店铺分组)
+CheckoutPage -> OrderService : batchCreateOrders(request)
+OrderService -> OrderService : 验证每个商品库存
+OrderService -> OrderDB : 创建订单记录(按店铺)
+OrderDB --> OrderService : 订单创建成功，返回订单ID
+OrderService -> OrderService : 生成订单编号
+OrderService -> CartService : removeSelectedItems(userId)
+CartService -> CartDB : 删除已结算的购物车项
+CartDB --> CartService : 删除成功
+CartService --> OrderService : 确认删除
+OrderService --> CheckoutPage : 返回订单列表
+CheckoutPage -> CheckoutPage : 清空当前页面数据
+CheckoutPage -> OrderPage : 跳转到订单列表
+OrderPage -> OrderPage : 刷新订单数据
+OrderPage --> User : 显示新订单状态为待支付
+
+== 场景二：订单支付与完成 ==
+
+User -> OrderPage : 在订单列表点击待支付订单
+OrderPage -> OrderPage : 显示支付弹窗
+User -> OrderPage : 选择微信支付
+User -> OrderPage : 点击确认支付
+OrderPage -> OrderService : payOrder(orderId, WECHAT)
+OrderService -> OrderDB : 查询订单信息
+OrderDB --> OrderService : 返回订单详情
+OrderService -> OrderService : 验证订单状态是否可支付
+OrderService -> OrderDB : 更新订单状态为支付中
+OrderDB --> OrderService : 更新成功
+OrderService --> OrderPage : 返回支付参数
+
+OrderPage -> OrderPage : 调用微信支付SDK
+note over OrderPage
+  第三方支付流程：
+  用户完成支付验证
+end note
+
+OrderPage -> OrderService : 查询订单支付状态
+OrderService -> OrderDB : 查询最新订单状态
+OrderDB --> OrderService : 返回订单状态(已支付)
+OrderService --> OrderPage : 支付成功
+OrderPage -> OrderPage : 关闭支付弹窗
+OrderPage -> OrderPage : 刷新订单列表
+OrderPage --> User : 显示订单已支付，等待发货
+
+== 场景三：确认收货与售后 ==
+
+User -> OrderPage : 在订单列表查看待收货订单
+User -> OrderPage : 点击确认收货
+OrderPage -> OrderPage : 显示确认收货弹窗
+User -> OrderPage : 确认收货
+OrderPage -> OrderService : confirmReceive(orderId)
+OrderService -> OrderDB : 更新订单状态为已完成
+OrderDB --> OrderService : 更新成功
+OrderService --> OrderPage : 确认收货成功
+OrderPage -> OrderPage : 刷新订单状态
+OrderPage --> User : 提示确认收货成功
+
+User -> OrderPage : 点击申请售后
+OrderPage -> OrderPage : 显示售后申请弹窗
+User -> OrderPage : 选择退款类型(仅退款/退货退款)
+User -> OrderPage : 填写退款原因
+User -> OrderPage : 输入退款金额
+User -> OrderPage : 提交售后申请
+OrderPage -> OrderService : createAfterSale(request)
+OrderService -> OrderDB : 创建售后记录
+OrderService -> OrderDB : 更新订单售后状态为处理中
+OrderDB --> OrderService : 保存成功
+OrderService --> OrderPage : 返回申请成功
+OrderPage -> OrderPage : 刷新订单详情
+OrderPage --> User : 提示售后申请已提交
+
+@enduml
+

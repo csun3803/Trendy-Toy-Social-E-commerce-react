@@ -1,6 +1,6 @@
-import React from 'react';
-import { Card, Button, Table, message } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import React, { useState } from 'react';
+import { Card, Button, Table, message, Space } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 
 const Products: React.FC = () => {
   // 模拟产品数据
@@ -28,6 +28,19 @@ const Products: React.FC = () => {
     },
   ];
 
+
+  const handleAddProduct = () => {
+    message.info('添加产品功能');
+  };
+
+  const handleEdit = (key: string) => {
+    message.info(`编辑产品 ${key}`);
+  };
+
+  const handleDelete = (key: string) => {
+    message.info(`删除产品 ${key}`);
+  };
+
   const columns = [
     {
       title: '产品名称',
@@ -53,21 +66,23 @@ const Products: React.FC = () => {
     {
       title: '操作',
       key: 'action',
-      render: () => (
-        <div>
-          <Button type="link" size="small">编辑</Button>
-          <Button type="link" size="small">删除</Button>
-        </div>
+      width: 120,
+      fixed: 'right' as const,
+      render: (_: any, record: any) => (
+        <Space size="small">
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record.key)}>
+            编辑
+          </Button>
+          <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={() => handleDelete(record.key)}>
+            删除
+          </Button>
+        </Space>
       ),
     },
   ];
 
-  const handleAddProduct = () => {
-    message.info('添加产品功能');
-  };
-
   return (
-    <div style={{ padding: 24 }}>
+    <div style={{ padding: 16 }}>
       <Card
         title="产品管理"
         extra={
@@ -76,7 +91,11 @@ const Products: React.FC = () => {
           </Button>
         }
       >
-        <Table columns={columns} dataSource={products} />
+        <Table 
+          columns={columns} 
+          dataSource={products} 
+          size="middle"
+        />
       </Card>
     </div>
   );

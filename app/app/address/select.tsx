@@ -7,21 +7,16 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  Pressable,
 } from 'react-native';
 import { Svg, Path } from 'react-native-svg';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import type { UserAddress } from '../../types';
 import { getUserAddresses, deleteAddress } from '../../services/addressService';
 import { getUserIdFromToken } from '../../utils/jwtHelper';
 
-const AddressSelect: React.FC = () => {
-  const params = useLocalSearchParams<{ selectedAddressId?: string }>();
+const AddressSelect = () => {
   const [addresses, setAddresses] = useState<UserAddress[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(
-    params.selectedAddressId || null
-  );
 
   useEffect(() => {
     fetchAddresses();
@@ -39,7 +34,6 @@ const AddressSelect: React.FC = () => {
       const response = await getUserAddresses(userId);
       
       if (response.data) {
-        // 兼容不同的响应格式
         let addressList = [];
         if (response.data.code === 200 && response.data.data) {
           addressList = response.data.data;
@@ -60,9 +54,8 @@ const AddressSelect: React.FC = () => {
   };
 
   const handleSelectAddress = (address: UserAddress) => {
-    setSelectedAddressId(address.addressId);
-    // 返回上一页并传递选中的地址
-    router.setParams({ selectedAddress: JSON.stringify(address) });
+    // 这里我们可以通过路由参数传递选中的地址，或者使用状态管理
+    // 暂时简化处理，直接返回上一页，在实际项目中应该使用全局状态管理
     router.back();
   };
 
@@ -85,8 +78,7 @@ const AddressSelect: React.FC = () => {
           style: 'destructive',
           onPress: async () => {
             try {
-              const response = await deleteAddress(addressId);
-              // 重新获取地址列表
+              await deleteAddress(addressId);
               await fetchAddresses();
             } catch (error) {
               console.error('删除地址失败');
@@ -113,12 +105,17 @@ const AddressSelect: React.FC = () => {
       {/* 顶部导航 */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Svg width={24} height={24} viewBox="0 0 1024 1024">
-            <Path d="M724 218.3V141c0-6.7-7.7-10.4-12.9-6.3L260.3 486.8c-16.4 12.8-16.4 37.5 0 50.3l450.8 352.1c5.3 4.1 12.9 0.4 12.9-6.3v-77.3c0-4.9-2.3-9.6-6.1-12.6l-360-281 360-281.1c3.8-3 6.1-7.7 6.1-12.6z" fill="#333"/>
+          <Svg width={20} height={20} viewBox="0 0 1024 1024" fill="none">
+            <Path
+              d="M732.794579 1020.867765a58.608941 58.608941 0 0 1-41.803294-17.558589L247.478814 553.984a60.446118 60.446118 0 0 1 0-84.720941L690.991285 19.847529a58.578824 58.578824 0 0 1 83.606588 0 60.446118 60.446118 0 0 1 0 84.720942L372.979049 511.638588 774.597873 918.588235a60.446118 60.446118 0 0 1 0 84.720941 58.608941 58.608941 0 0 1-41.803294 17.558589z"
+              fill="#3C3C3C"
+            />
           </Svg>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>选择收货地址</Text>
-        <View style={styles.headerRight} />
+        <TouchableOpacity style={styles.headerRight} onPress={handleAddAddress}>
+          <Text style={styles.addText}>新增</Text>
+        </TouchableOpacity>
       </View>
 
       {/* 地址列表 */}
@@ -133,18 +130,12 @@ const AddressSelect: React.FC = () => {
         ) : (
           <>
             {addresses.map((address) => (
-              <View
+              <TouchableOpacity
                 key={address.addressId}
-                style={[
-                  styles.addressItem,
-                  selectedAddressId === address.addressId && styles.addressItemActive,
-                ]}
+                style={styles.addressItem}
+                onPress={() => handleSelectAddress(address)}
               >
-                <TouchableOpacity
-                  style={styles.addressContent}
-                  onPress={() => handleSelectAddress(address)}
-                  activeOpacity={0.7}
-                >
+                <View style={styles.addressContent}>
                   <View style={styles.addressHeader}>
                     <Text style={styles.recipientName}>{address.recipientName}</Text>
                     <Text style={styles.recipientPhone}>{address.recipientPhone}</Text>
@@ -153,23 +144,11 @@ const AddressSelect: React.FC = () => {
                         <Text style={styles.defaultTagText}>默认</Text>
                       </View>
                     )}
-                    {address.addressTag && (
-                      <View style={styles.addressTag}>
-                        <Text style={styles.addressTagText}>{address.addressTag}</Text>
-                      </View>
-                    )}
                   </View>
                   <Text style={styles.addressDetail} numberOfLines={2}>
                     {address.fullAddress || `${address.province}${address.city}${address.district}${address.detailAddress}`}
                   </Text>
-                  {selectedAddressId === address.addressId && (
-                    <View style={styles.selectedIcon}>
-                      <Svg width={20} height={20} viewBox="0 0 1024 1024">
-                        <Path d="M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448 448-200.6 448-448S759.4 64 512 64zm193.5 301.7l-210.6 292c-12.7 17.6-39 17.6-51.7 0L318.5 484.9c-3.8-5.3 0-12.7 6.5-12.7h46.9c10.2 0 19.9 4.9 25.9 13.3l71.2 98.8 157.2-218c6-8.3 15.6-13.3 25.9-13.3H699c6.5 0 10.3 7.4 6.5 12.7z" fill="#FF6B6B"/>
-                      </Svg>
-                    </View>
-                  )}
-                </TouchableOpacity>
+                </View>
                 <View style={styles.addressActions}>
                   <TouchableOpacity
                     style={styles.actionBtn}
@@ -178,38 +157,16 @@ const AddressSelect: React.FC = () => {
                     <Svg width={16} height={16} viewBox="0 0 1024 1024">
                       <Path d="M884 278.6l-60.2-60.2c-12.5-12.5-32.8-12.5-45.3 0L525.6 471.3l-60.2 60.2c-3.1 3.1-3.1 8.2 0 11.3l49.5 49.5c3.1 3.1 8.2 3.1 11.3 0l60.2-60.2 253.2-253.2c12.5-12.4 12.5-32.7 0-45.3zM417.8 640.2c-3.1-3.1-8.2-3.1-11.3 0l-49.5 49.5c-3.1 3.1-3.1 8.2 0 11.3l49.5 49.5c3.1 3.1 8.2 3.1 11.3 0l49.5-49.5c3.1-3.1 3.1-8.2 0-11.3l-49.5-49.5z" fill="#666"/>
                     </Svg>
-                    <Text style={styles.actionBtnText}>编辑</Text>
                   </TouchableOpacity>
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.actionBtn,
-                      pressed && { opacity: 0.7 }
-                    ]}
-                    onPress={() => {
-                      handleDeleteAddress(address.addressId);
-                    }}
-                  >
-                    <Svg width={16} height={16} viewBox="0 0 1024 1024">
-                      <Path d="M352 144h320v32H352v-32zm-48 0h-80v32h80v-32zm144 512c0 35.3-28.7 64-64 64s-64-28.7-64-64v-128H224V112c0-8.8 7.2-16 16-16h320c8.8 0 16 7.2 16 16v320h-96v128zm0-192h96v-320H352v320z" fill="#ff4d4f"/>
-                    </Svg>
-                    <Text style={[styles.actionBtnText, { color: '#ff4d4f' }]}>删除</Text>
-                  </Pressable>
                 </View>
-              </View>
+              </TouchableOpacity>
             ))}
+            <View style={styles.bottomHint}>
+              <Text style={styles.bottomHintText}>到底啦</Text>
+            </View>
           </>
         )}
       </ScrollView>
-
-      {/* 底部添加按钮 */}
-      <View style={styles.bottomBar}>
-        <TouchableOpacity style={styles.addBtn} onPress={handleAddAddress}>
-          <Svg width={20} height={20} viewBox="0 0 1024 1024">
-            <Path d="M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448 448-200.6 448-448S759.4 64 512 64zm192 472c0 4.4-3.6 8-8 8H544v152c0 4.4-3.6 8-8 8h-48c-4.4 0-8-3.6-8-8V544H328c-4.4 0-8-3.6-8-8v-48c0-4.4 3.6-8 8-8h152V328c0-4.4 3.6-8 8-8h48c4.4 0 8 3.6 8 8v152h152c4.4 0 8 3.6 8 8v48z" fill="#fff"/>
-          </Svg>
-          <Text style={styles.addBtnText}>添加新地址</Text>
-        </TouchableOpacity>
-      </View>
     </View>
   );
 };
@@ -245,7 +202,7 @@ const styles = StyleSheet.create({
     padding: 5,
   },
   headerTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
     flex: 1,
@@ -253,7 +210,12 @@ const styles = StyleSheet.create({
     marginHorizontal: 10,
   },
   headerRight: {
-    width: 34,
+    padding: 5,
+  },
+  addText: {
+    fontSize: 16,
+    color: '#FF6B6B',
+    fontWeight: '500',
   },
   addressList: {
     flex: 1,
@@ -282,17 +244,14 @@ const styles = StyleSheet.create({
   },
   addressItem: {
     backgroundColor: '#fff',
-    borderRadius: 10,
+    borderRadius: 8,
     padding: 15,
     marginBottom: 10,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
   },
   addressContent: {
-    marginBottom: 10,
-  },
-  addressItemActive: {
-    borderColor: '#FF6B6B',
+    flex: 1,
   },
   addressHeader: {
     flexDirection: 'row',
@@ -306,36 +265,24 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   recipientPhone: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: 15,
+    color: '#333',
     marginRight: 10,
   },
   defaultTag: {
     backgroundColor: '#FF6B6B',
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 4,
-    marginRight: 8,
   },
   defaultTagText: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#fff',
-  },
-  addressTag: {
-    backgroundColor: '#f0f0f0',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  addressTagText: {
-    fontSize: 11,
-    color: '#666',
   },
   addressDetail: {
     fontSize: 14,
     color: '#666',
     lineHeight: 20,
-    marginBottom: 10,
   },
   addressActions: {
     flexDirection: 'row',
@@ -352,31 +299,13 @@ const styles = StyleSheet.create({
     color: '#666',
     marginLeft: 4,
   },
-  selectedIcon: {
-    position: 'absolute',
-    top: 15,
-    right: 15,
-  },
-  bottomBar: {
-    backgroundColor: '#fff',
-    padding: 15,
-    paddingBottom: 30,
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
-  },
-  addBtn: {
-    flexDirection: 'row',
+  bottomHint: {
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FF6B6B',
-    paddingVertical: 12,
-    borderRadius: 20,
+    paddingVertical: 20,
   },
-  addBtnText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: 'bold',
-    marginLeft: 8,
+  bottomHintText: {
+    fontSize: 14,
+    color: '#999',
   },
 });
 

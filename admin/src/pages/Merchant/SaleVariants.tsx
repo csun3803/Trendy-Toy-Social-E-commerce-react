@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Button, Table, Tag, Space, App, Modal, Form, Input, Select, InputNumber, Image, Steps, Pagination, Checkbox, Divider, Popconfirm } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, ArrowLeftOutlined, ArrowRightOutlined } from '@ant-design/icons';
+import { Card, Button, Table, Tag, Space, App, Modal, Form, Input, Select, InputNumber, Image, Steps, Pagination, Checkbox, Divider, Popconfirm, Upload } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, ArrowLeftOutlined, ArrowRightOutlined, UploadOutlined } from '@ant-design/icons';
 import { request, history, useParams } from '@umijs/max';
 
 const { TextArea } = Input;
@@ -70,6 +70,7 @@ const SaleVariants: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingVariant, setEditingVariant] = useState<SaleVariant | null>(null);
+  const [shopId, setShopId] = useState<string>('');
   const [form] = Form.useForm();
   const { message } = App.useApp();
 
@@ -82,6 +83,14 @@ const SaleVariants: React.FC = () => {
 
   const fetchSaleSeries = async () => {
     try {
+      const token = localStorage.getItem('token');
+      const merchantResponse = await request('/api/merchant/info/current', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (merchantResponse.code === 200 || merchantResponse.message === 'success') {
+        setShopId(merchantResponse.data.shopId);
+      }
+      
       const response = await request(`/api/sale-series/${saleSeriesId}`);
       if (response.code === 200 || response.message === 'success') {
         setSaleSeries(response.data);
@@ -144,19 +153,20 @@ const SaleVariants: React.FC = () => {
     }
   }, [isModalVisible, currentStep, saleSeries?.seriesId]);
 
+
   const columns = [
     {
       title: '图片',
       dataIndex: 'customImages',
       key: 'customImages',
-      width: 100,
+      width: 60,
       render: (customImages: string) => {
         const images = parseImages(customImages);
         const firstImage = images.length > 0 ? images[0] : null;
         return (
           <Image
-            width={60}
-            height={60}
+            width={36}
+            height={36}
             src={getFullImageUrl(firstImage)}
             style={{ objectFit: 'cover', borderRadius: 4 }}
             fallback="https://neeko-copilot.bytedance.net/api/text2image?prompt=product%20placeholder%20image&size=60x60"
@@ -205,10 +215,16 @@ const SaleVariants: React.FC = () => {
     {
       title: '操作',
       key: 'action',
+      width: 120,
+      fixed: 'right' as const,
       render: (_: any, record: SaleVariant) => (
-        <Space size="middle">
-          <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
-          <Button type="link" danger icon={<DeleteOutlined />} onClick={() => handleDelete(record.saleVariantId)}>删除</Button>
+        <Space size="small">
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>
+            编辑
+          </Button>
+          <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={() => handleDelete(record.saleVariantId)}>
+            删除
+          </Button>
         </Space>
       ),
     },
@@ -219,14 +235,14 @@ const SaleVariants: React.FC = () => {
       title: '图片',
       dataIndex: 'imageUrl',
       key: 'imageUrl',
-      width: 80,
+      width: 60,
       render: (imageUrl: string, record: Product) => {
         const images = parseImages(record.productImages);
         const displayImage = images.length > 0 ? images[0] : imageUrl;
         return (
           <Image
-            width={50}
-            height={50}
+            width={36}
+            height={36}
             src={getFullImageUrl(displayImage)}
             style={{ objectFit: 'cover', borderRadius: 4 }}
             fallback="https://neeko-copilot.bytedance.net/api/text2image?prompt=product%20placeholder%20image&size=60x60"
@@ -397,6 +413,7 @@ const SaleVariants: React.FC = () => {
         const data = {
           ...values,
           saleSeriesId,
+          shopId,
           salePrice: values.salePrice,
           stockQuantity: values.stockQuantity,
           saleStatus: values.saleStatus,
@@ -418,6 +435,7 @@ const SaleVariants: React.FC = () => {
         const createPromises = selectedProducts.map(async (product, index) => {
           const variantData = {
             saleSeriesId,
+            shopId,
             variantId: product.productId,
             skuCode: product.productName,
             salePrice: values[`salePrice_${index}`] || product.price || 0,
@@ -451,7 +469,7 @@ const SaleVariants: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: 24 }}>
+    <div style={{ padding: 16 }}>
       <Card
         title={
           <Space>
@@ -542,7 +560,7 @@ const SaleVariants: React.FC = () => {
               loading={productsLoading}
               rowKey="productId"
               pagination={false}
-              size="small"
+              size="middle"
               onRow={(record) => ({
                 onClick: () => {
                   const isSelected = selectedProducts.some(p => p.productId === record.productId);
@@ -582,7 +600,41 @@ const SaleVariants: React.FC = () => {
                   name="customImages"
                   label="款式图片"
                 >
-                  <Input placeholder="请输入款式图片URL" />
+                  <Upload
+                    name="file"
+                    action={`${API_BASE_URL}/api/upload/image?type=product`}
+                    listType="picture-card"
+                    maxCount={1}
+                    headers={{
+                      Authorization: `Bearer ${localStorage.getItem('token')}`,
+                    }}
+                    onChange={(info) => {
+                      if (info.file.status === 'done') {
+                        const url = info.file.response?.data?.url;
+                        if (url) {
+                          form.setFieldValue('customImages', url);
+                        }
+                      } else if (info.file.status === 'error') {
+                        message.error('上传失败');
+                      }
+                    }}
+                    onRemove={() => {
+                      form.setFieldValue('customImages', undefined);
+                    }}
+                  >
+                    {form.getFieldValue('customImages') ? (
+                      <Image
+                        src={getFullImageUrl(form.getFieldValue('customImages'))}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        preview={false}
+                      />
+                    ) : (
+                      <div>
+                        <UploadOutlined />
+                        <div style={{ marginTop: 8 }}>上传</div>
+                      </div>
+                    )}
+                  </Upload>
                 </Form.Item>
                 <Form.Item
                   name="salePrice"
@@ -660,13 +712,47 @@ const SaleVariants: React.FC = () => {
                       </Form.Item>
                       <Form.Item
                         name={`customImages_${index}`}
-                        label="图片URL"
+                        label="图片"
                         initialValue={(() => {
                           const images = parseImages(product.productImages);
                           return images.length > 0 ? images[0] : product.imageUrl || '';
                         })()}
                       >
-                        <Input placeholder="请输入款式图片URL" />
+                        <Upload
+                          name="file"
+                          action={`${API_BASE_URL}/api/upload/image?type=product`}
+                          listType="picture-card"
+                          maxCount={1}
+                          headers={{
+                            Authorization: `Bearer ${localStorage.getItem('token')}`,
+                          }}
+                          onChange={(info) => {
+                            if (info.file.status === 'done') {
+                              const url = info.file.response?.data?.url;
+                              if (url) {
+                                form.setFieldValue(`customImages_${index}`, url);
+                              }
+                            } else if (info.file.status === 'error') {
+                              message.error('上传失败');
+                            }
+                          }}
+                          onRemove={() => {
+                            form.setFieldValue(`customImages_${index}`, undefined);
+                          }}
+                        >
+                          {form.getFieldValue(`customImages_${index}`) ? (
+                            <Image
+                              src={getFullImageUrl(form.getFieldValue(`customImages_${index}`))}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              preview={false}
+                            />
+                          ) : (
+                            <div>
+                              <UploadOutlined />
+                              <div style={{ marginTop: 8 }}>上传</div>
+                            </div>
+                          )}
+                        </Upload>
                       </Form.Item>
                       <Form.Item
                         name={`saleStatus_${index}`}

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, TextInput, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, RefreshControl } from 'react-native';
 import { Svg, Path } from 'react-native-svg';
 import { Image } from 'expo-image';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getSaleSeriesList } from '../../services/saleSeriesService';
 import { getCartList, updateCartItem, removeCartItem, selectAllItems, removeSelectedItems } from '../../services/cartService';
@@ -27,7 +27,8 @@ function throttle<T extends (...args: any[]) => any>(
 }
 
 const Shop = () => {
-  const [activeTab, setActiveTab] = useState<'recommend' | 'cart'>('recommend');
+  const params = useLocalSearchParams<{ tab?: string }>();
+  const [activeTab, setActiveTab] = useState<'recommend' | 'cart'>(params.tab === 'cart' ? 'cart' : 'recommend');
   const [searchKeyword, setSearchKeyword] = useState('');
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -40,6 +41,7 @@ const Shop = () => {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [cartLoading, setCartLoading] = useState(false);
   const [isAllSelected, setIsAllSelected] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [userId, setUserId] = useState<string>('');
 
   useEffect(() => {
@@ -69,7 +71,21 @@ const Shop = () => {
       });
 
       const responseData = response.data as any;
-      const seriesData = (responseData.records || responseData.list || responseData.items || []).map((item: any) => {
+      // 获取数据数组 - 支持多种格式
+      let dataArray: any[] = [];
+      if (Array.isArray(responseData)) {
+        dataArray = responseData;
+      } else if (Array.isArray(responseData.data)) {
+        dataArray = responseData.data;
+      } else if (Array.isArray(responseData.records)) {
+        dataArray = responseData.records;
+      } else if (Array.isArray(responseData.list)) {
+        dataArray = responseData.list;
+      } else if (Array.isArray(responseData.items)) {
+        dataArray = responseData.items;
+      }
+      
+      const seriesData = dataArray.map((item: any) => {
         let coverImage = '';
         try {
           const coverImages = JSON.parse(item.saleCoverImage || '[]');
@@ -96,8 +112,11 @@ const Shop = () => {
           saleStatus: item.saleStatus,
           variantCount: item.variantCount || 0,
           totalSales: item.totalSales || 0,
+          minPrice: item.minPrice,
+          maxPrice: item.maxPrice,
           createdAt: item.createdAt,
-          updatedAt: item.updatedAt
+          updatedAt: item.updatedAt,
+          shopName: item.shopName
         };
       });
 
@@ -105,12 +124,28 @@ const Shop = () => {
         setSeriesList(prev => [...prev, ...seriesData]);
         setPage(prev => prev + 1);
         const newLength = seriesList.length + seriesData.length;
-        const total = responseData.total || responseData.count || 0;
+        // 获取total值 - 支持多种格式
+        let total = 0;
+        if (typeof responseData.total === 'number') {
+          total = responseData.total;
+        } else if (typeof responseData.count === 'number') {
+          total = responseData.count;
+        } else if (responseData.data && typeof responseData.data.total === 'number') {
+          total = responseData.data.total;
+        }
         setHasMore(newLength < total);
       } else {
         setSeriesList(seriesData);
         setPage(1);
-        const total = responseData.total || responseData.count || 0;
+        // 获取total值 - 支持多种格式
+        let total = 0;
+        if (typeof responseData.total === 'number') {
+          total = responseData.total;
+        } else if (typeof responseData.count === 'number') {
+          total = responseData.count;
+        } else if (responseData.data && typeof responseData.data.total === 'number') {
+          total = responseData.data.total;
+        }
         setHasMore(seriesData.length < total);
       }
     } catch (error) {
@@ -134,6 +169,8 @@ const Shop = () => {
         saleStatus: 'ON_SALE',
         variantCount: 13,
         totalSales: 15234,
+        minPrice: 59.0,
+        maxPrice: 699.0,
         createdAt: '2024-01-01',
         updatedAt: '2024-01-01'
       },
@@ -147,6 +184,8 @@ const Shop = () => {
         saleStatus: 'ON_SALE',
         variantCount: 12,
         totalSales: 8921,
+        minPrice: 69.0,
+        maxPrice: 899.0,
         createdAt: '2024-01-01',
         updatedAt: '2024-01-01'
       }
@@ -217,7 +256,10 @@ const Shop = () => {
           brand: '泡泡玛特',
           image: '/images/shop/popmart/warmth/3.jpg',
           price: 69.00,
-          category: '盲盒'
+          category: '盲盒',
+          shopName: '泡泡玛特官方店',
+          saleSeriesName: 'SKULLPANDA温度系列',
+          variantName: '自惬意'
         },
         quantity: 1,
         isSelected: true,
@@ -240,7 +282,10 @@ const Shop = () => {
           brand: '泡泡玛特',
           image: '/images/shop/popmart/warmth/5.jpg',
           price: 69.00,
-          category: '盲盒'
+          category: '盲盒',
+          shopName: '泡泡玛特官方店',
+          saleSeriesName: 'SKULLPANDA温度系列',
+          variantName: '暖洋洋'
         },
         quantity: 2,
         isSelected: false,
@@ -395,7 +440,19 @@ const Shop = () => {
       Alert.alert('提示', '请先选择要结算的商品');
       return;
     }
-    router.push('/checkout');
+    // 准备要传递的数据 - 包含完整信息
+    const checkoutData = selectedItems.map(item => ({
+      cartItemId: item.cartItemId,
+      shopId: item.shopId,
+      saleSeriesId: item.saleSeriesId,
+      saleVariantId: item.saleVariantId,
+      quantity: item.quantity,
+      productSnapshot: item.productSnapshot
+    }));
+    router.push({
+      pathname: '/checkout',
+      params: { items: JSON.stringify(checkoutData) }
+    });
   };
 
   const handleSearchInput = (text: string) => {
@@ -477,6 +534,45 @@ const Shop = () => {
   const leftColumnItems = seriesList.filter((_, index) => index % 2 === 0);
   const rightColumnItems = seriesList.filter((_, index) => index % 2 === 1);
 
+  // 将购物车项按店铺分组
+  const groupCartItemsByShop = () => {
+    const grouped: { [key: string]: { shopName: string; items: CartItem[] } } = {};
+    
+    cartItems.forEach(item => {
+      let snapshot = item.productSnapshot;
+      if (typeof snapshot === 'string') {
+        try {
+          snapshot = JSON.parse(snapshot);
+        } catch (e) {
+          snapshot = { name: '未知商品' };
+        }
+      }
+      
+      const shopId = item.shopId || 'unknown';
+      const shopName = snapshot.shopName || '未知店铺';
+      
+      if (!grouped[shopId]) {
+        grouped[shopId] = { shopName, items: [] };
+      }
+      grouped[shopId].items.push(item);
+    });
+    
+    return grouped;
+  };
+
+  // 检查某个店铺的所有商品是否都被选中
+  const isShopAllSelected = (items: CartItem[]) => {
+    return items.length > 0 && items.every(item => item.isSelected);
+  };
+
+  // 切换某个店铺的所有商品选中状态
+  const toggleShopAllSelected = (items: CartItem[]) => {
+    const isAllSelected = isShopAllSelected(items);
+    items.forEach(item => {
+      handleSelectItem(item.cartItemId, !isAllSelected);
+    });
+  };
+
   const renderCartItem = (item: CartItem) => {
     let snapshot = item.productSnapshot;
     if (typeof snapshot === 'string') {
@@ -493,7 +589,7 @@ const Shop = () => {
       : `${BASE_URL}${snapshot.image || ''}`;
     
     return (
-      <View key={item.cartItemId} style={styles.cartItem}>
+      <View key={item.cartItemId} style={[styles.cartItem, isEditing && styles.cartItemEditing]}>
         <TouchableOpacity 
           style={styles.checkbox}
           onPress={() => handleSelectItem(item.cartItemId, !item.isSelected)}
@@ -519,66 +615,109 @@ const Shop = () => {
         
         <View style={styles.cartItemInfo}>
           <Text style={styles.cartItemName} numberOfLines={2}>{snapshot.name || '未知商品'}</Text>
-          <Text style={styles.cartItemBrand}>{snapshot.brand || ''}</Text>
+          
+          {snapshot.saleSeriesName && (
+            <Text style={styles.saleSeriesName}>{snapshot.saleSeriesName}</Text>
+          )}
+          
+          {snapshot.variantName && (
+            <Text style={styles.variantName}>款式: {snapshot.variantName}</Text>
+          )}
+          
           <Text style={styles.cartItemSku}>SKU: {snapshot.sku || ''}</Text>
           
           <View style={styles.cartItemBottom}>
             <Text style={styles.cartItemPrice}>¥{(snapshot.price || 0).toFixed(2)}</Text>
             
-            <View style={styles.quantityControl}>
-              <TouchableOpacity 
-                style={styles.quantityBtn}
-                onPress={() => handleQuantityChange(item.cartItemId, item.quantity - 1)}
-              >
-                <Text style={styles.quantityBtnText}>-</Text>
-              </TouchableOpacity>
-              <Text style={styles.quantityText}>{item.quantity}</Text>
-              <TouchableOpacity 
-                style={styles.quantityBtn}
-                onPress={() => handleQuantityChange(item.cartItemId, item.quantity + 1)}
-              >
-                <Text style={styles.quantityBtnText}>+</Text>
-              </TouchableOpacity>
-            </View>
+            {!isEditing && (
+              <View style={styles.quantityControl}>
+                <TouchableOpacity 
+                  style={styles.quantityBtn}
+                  onPress={() => handleQuantityChange(item.cartItemId, item.quantity - 1)}
+                >
+                  <Text style={styles.quantityBtnText}>-</Text>
+                </TouchableOpacity>
+                <Text style={styles.quantityText}>{item.quantity}</Text>
+                <TouchableOpacity 
+                  style={styles.quantityBtn}
+                  onPress={() => handleQuantityChange(item.cartItemId, item.quantity + 1)}
+                >
+                  <Text style={styles.quantityBtnText}>+</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         </View>
         
-        <TouchableOpacity 
-          style={styles.deleteBtn}
-          onPress={() => handleRemoveItem(item.cartItemId)}
-        >
-          <Svg width={20} height={20} viewBox="0 0 24 24">
-            <Path 
-              d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" 
-              fill="#999"
-            />
-          </Svg>
-        </TouchableOpacity>
+        {isEditing && (
+          <TouchableOpacity 
+            style={styles.deleteBtnEditing}
+            onPress={() => handleRemoveItem(item.cartItemId)}
+          >
+            <Svg width={20} height={20} viewBox="0 0 1024 1024" fill="none">
+              <Path
+                d="M519.620465 0c-103.924093 0-188.511256 82.467721-192.083349 185.820279H85.015814A48.91386 48.91386 0 0 0 36.101953 234.686512a48.91386 48.91386 0 0 0 48.913861 48.866232h54.010046V831.345116c0 102.852465 69.822512 186.844279 155.909954 186.844279h439.200744c86.087442 0 155.909953-83.491721 155.909954-186.844279V284.100465h48.91386a48.91386 48.91386 0 0 0 48.913861-48.890046 48.91386 48.91386 0 0 0-48.913861-48.866233h-227.756651A191.559442 191.559442 0 0 0 519.620465 0z m-107.234232 177.080558c3.548279-49.771163 46.627721-88.540279 99.851907-88.540279 53.224186 0 96.327442 38.745302 99.351813 88.540279h-199.20372z m-111.997024 752.044651c-30.981953 0-65.083535-39.15014-65.083535-95.041488V287.744h575.488v546.839814c0 55.915163-34.077767 95.041488-65.059721 95.041488H300.389209v-0.500093z"
+                fill="#D81E06"
+              />
+              <Path
+                d="M368.116093 796.814884c24.361674 0 44.27014-21.670698 44.27014-48.818605v-278.623256c0-27.147907-19.908465-48.818605-44.27014-48.818604-24.33786 0-44.27014 21.670698-44.27014 48.818604v278.623256c0 27.147907 19.360744 48.818605 44.293954 48.818605z m154.933581 0c24.361674 0 44.293953-21.670698 44.293954-48.818605v-278.623256c0-27.147907-19.932279-48.818605-44.293954-48.818604-24.33786 0-44.27014 21.670698-44.270139 48.818604v278.623256c0 27.147907 19.932279 48.818605 44.293953 48.818605z m132.810419 0c24.33786 0 44.27014-21.670698 44.27014-48.818605v-278.623256c0-27.147907-19.932279-48.818605-44.27014-48.818604s-44.27014 21.670698-44.27014 48.818604v278.623256c0 27.147907 19.360744 48.818605 44.27014 48.818605z"
+                fill="#D81E06"
+              />
+            </Svg>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
+
+  // 渲染一个店铺的购物车项
+  const renderShopGroup = (shopId: string, shopName: string, items: CartItem[]) => {
+    const isShopSelected = isShopAllSelected(items);
+    
+    return (
+      <View key={shopId} style={styles.shopGroup}>
+        <View style={styles.shopHeader}>
+          <TouchableOpacity 
+            style={styles.shopCheckboxContainer}
+            onPress={() => toggleShopAllSelected(items)}
+          >
+            <View style={[styles.checkboxInner, isShopSelected && styles.checkboxSelected]}>
+              {isShopSelected && (
+                <Svg width={14} height={14} viewBox="0 0 24 24">
+                  <Path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" fill="#fff" />
+                </Svg>
+              )}
+            </View>
+            <Text style={styles.shopHeaderName}>{shopName}</Text>
+          </TouchableOpacity>
+        </View>
+        
+        {items.map(renderCartItem)}
       </View>
     );
   };
 
   return (
     <View style={styles.page}>
-      <View style={styles.container}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'recommend' && styles.activeTab]}
-          onPress={() => setActiveTab('recommend')}
-        >
-          <Text style={[styles.tabText, activeTab === 'recommend' && styles.activeTabText]}>推荐</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'cart' && styles.activeTab]}
-          onPress={() => setActiveTab('cart')}
-        >
-          <Text style={[styles.tabText, activeTab === 'cart' && styles.activeTabText]}>购物车</Text>
-          {cartItems.length > 0 && (
-            <View style={styles.cartBadge}>
-              <Text style={styles.cartBadgeText}>{cartItems.length}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-      </View>
+      {/* 顶部导航栏 - 仅在推荐页显示 */}
+      {activeTab === 'recommend' && (
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>商城</Text>
+          <TouchableOpacity style={styles.cartIconBtn} onPress={() => setActiveTab('cart')}>
+            <Svg width={24} height={24} viewBox="0 0 1024 1024" fill="none">
+              <Path
+                d="M733.090909 814.545455a58.181818 58.181818 0 1 1 0 116.363636 58.181818 58.181818 0 0 1 0-116.363636z m-442.181818 0a58.181818 58.181818 0 1 1 0 116.363636 58.181818 58.181818 0 0 1 0-116.363636zM91.229091 74.752c59.066182 9.937455 81.943273 42.496 98.257454 113.803636l589.568-2.001454a93.090909 93.090909 0 0 1 92.765091 104.168727l-47.429818 395.287273A93.090909 93.090909 0 0 1 731.927273 768h-439.156364a93.090909 93.090909 0 0 1-91.787636-77.591273L116.363636 188.858182c-8.797091-33.047273-16.616727-41.890909-36.701091-45.242182a34.909091 34.909091 0 1 1 11.589819-68.864z m688.081454 181.620364L200.424727 258.327273l3.863273 31.976727 65.559273 388.445091a23.272727 23.272727 0 0 0 20.154182 19.246545l2.792727 0.162909h439.156363a23.272727 23.272727 0 0 0 22.644364-17.850181l0.465455-2.653091 47.429818-395.264a23.272727 23.272727 0 0 0-20.48-25.902546l-2.699637-0.139636z m-336.128 231.051636l1.093819 3.188364c7.400727 25.320727 34.909091 44.520727 67.886545 44.520727 31.092364 0 57.413818-17.128727 66.466909-40.401455l1.210182-3.537454a34.909091 34.909091 0 1 1 66.792727 20.410182c-16.919273 55.365818-72.005818 93.323636-134.469818 93.323636-63.069091 0-118.551273-38.679273-134.912-94.789818a34.909091 34.909091 0 0 1 65.931636-22.714182z"
+                fill="#333"
+              />
+            </Svg>
+            {cartItems.length > 0 && (
+              <View style={styles.cartBadge}>
+                <Text style={styles.cartBadgeText}>{cartItems.length}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
 
       {activeTab === 'recommend' && (
         <ScrollView
@@ -608,6 +747,23 @@ const Shop = () => {
               />
             </View>
 
+            {/* 抽盒机入口 */}
+            <TouchableOpacity
+              style={styles.blindBoxBanner}
+              onPress={() => router.push('/blind-box/')}
+              activeOpacity={0.8}
+            >
+              <View style={styles.blindBoxBannerLeft}>
+                <View style={styles.blindBoxBannerText}>
+                  <Text style={styles.blindBoxBannerTitle}>在线抽盒机</Text>
+                  <Text style={styles.blindBoxBannerDesc}>足不出户，体验拆盒乐趣</Text>
+                </View>
+              </View>
+              <View style={styles.blindBoxBannerBtn}>
+                <Text style={styles.blindBoxBannerBtnText}>去抽盒</Text>
+              </View>
+            </TouchableOpacity>
+
             <View style={styles.waterfallContainer}>
               <View style={styles.waterfallColumn}>
                 {leftColumnItems.map((item) => (
@@ -629,11 +785,15 @@ const Shop = () => {
                       <Text style={styles.seriesName} numberOfLines={2}>{item.saleTitle}</Text>
                       <Text style={styles.seriesDesc} numberOfLines={1}>{item.saleDescription}</Text>
                       <View style={styles.priceContainer}>
-                        <Text style={styles.currentPrice}>¥{item.variantCount > 0 ? '69.00起' : '暂无价格'}</Text>
+                        <Text style={styles.currentPrice}>
+                          {item.minPrice ? `¥${item.minPrice.toFixed(2)}起` : (item.variantCount > 0 ? '暂无价格' : '暂无价格')}
+                        </Text>
                       </View>
                       <View style={styles.seriesMeta}>
+                        <TouchableOpacity onPress={() => router.push(`/shop-home/${item.shopId}` as any)} style={styles.shopNameLink}>
+                          <Text style={styles.shopNameText} numberOfLines={1}>{item.shopName || '未知店铺'}</Text>
+                        </TouchableOpacity>
                         <Text style={styles.metaText}>已售 {item.totalSales || 0}</Text>
-                        <Text style={styles.variantCount}>{item.variantCount}个款式</Text>
                       </View>
                     </View>
                   </TouchableOpacity>
@@ -660,11 +820,15 @@ const Shop = () => {
                       <Text style={styles.seriesName} numberOfLines={2}>{item.saleTitle}</Text>
                       <Text style={styles.seriesDesc} numberOfLines={1}>{item.saleDescription}</Text>
                       <View style={styles.priceContainer}>
-                        <Text style={styles.currentPrice}>¥{item.variantCount > 0 ? '69.00起' : '暂无价格'}</Text>
+                        <Text style={styles.currentPrice}>
+                          {item.minPrice ? `¥${item.minPrice.toFixed(2)}起` : (item.variantCount > 0 ? '暂无价格' : '暂无价格')}
+                        </Text>
                       </View>
                       <View style={styles.seriesMeta}>
+                        <TouchableOpacity onPress={() => router.push(`/shop-home/${item.shopId}` as any)} style={styles.shopNameLink}>
+                          <Text style={styles.shopNameText} numberOfLines={1}>{item.shopName || '未知店铺'}</Text>
+                        </TouchableOpacity>
                         <Text style={styles.metaText}>已售 {item.totalSales || 0}</Text>
-                        <Text style={styles.variantCount}>{item.variantCount}个款式</Text>
                       </View>
                     </View>
                   </TouchableOpacity>
@@ -699,6 +863,19 @@ const Shop = () => {
 
       {activeTab === 'cart' && (
         <View style={styles.cartContent}>
+          {/* 购物车顶部栏 */}
+          <View style={styles.cartHeaderBar}>
+            <TouchableOpacity style={styles.cartBackBtn} onPress={() => setActiveTab('recommend')}>
+              <Svg width={20} height={20} viewBox="0 0 1024 1024" fill="none">
+                <Path
+                  d="M732.794579 1020.867765a58.608941 58.608941 0 0 1-41.803294-17.558589L247.478814 553.984a60.446118 60.446118 0 0 1 0-84.720941L690.991285 19.847529a58.578824 58.578824 0 0 1 83.606588 0 60.446118 60.446118 0 0 1 0 84.720942L372.979049 511.638588 774.597873 918.588235a60.446118 60.446118 0 0 1 0 84.720941 58.608941 58.608941 0 0 1-41.803294 17.558589z"
+                  fill="#333"
+                />
+              </Svg>
+            </TouchableOpacity>
+            <Text style={styles.cartHeaderTitle}>购物车</Text>
+            <View style={{ width: 30 }} />
+          </View>
           {cartLoading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#8069E1" />
@@ -728,25 +905,15 @@ const Shop = () => {
                 }
               >
                 <View style={styles.cartHeader}>
-                  <TouchableOpacity
-                    style={styles.selectAllContainer}
-                    onPress={handleSelectAll}
-                  >
-                    <View style={[styles.checkboxInner, isAllSelected && styles.checkboxSelected]}>
-                      {isAllSelected && (
-                        <Svg width={14} height={14} viewBox="0 0 24 24">
-                          <Path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" fill="#fff" />
-                        </Svg>
-                      )}
-                    </View>
-                    <Text style={styles.selectAllText}>全选</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={handleRemoveSelected}>
-                    <Text style={styles.deleteSelectedText}>删除选中</Text>
+                  <View style={{ flex: 1 }} />
+                  <TouchableOpacity onPress={() => setIsEditing(!isEditing)}>
+                    <Text style={styles.deleteSelectedText}>{isEditing ? '完成' : '管理'}</Text>
                   </TouchableOpacity>
                 </View>
                 
-                {cartItems.map(renderCartItem)}
+                {Object.entries(groupCartItemsByShop()).map(([shopId, { shopName, items }]) => 
+                  renderShopGroup(shopId, shopName, items)
+                )}
               </ScrollView>
               
               <View style={styles.cartFooter}>
@@ -764,23 +931,44 @@ const Shop = () => {
                   <Text style={styles.selectAllText}>全选</Text>
                 </TouchableOpacity>
                 
-                <View style={styles.totalContainer}>
-                  <Text style={styles.totalLabel}>合计: </Text>
-                  <Text style={styles.totalPrice}>¥{calculateSelectedTotal().toFixed(2)}</Text>
-                </View>
-                
-                <TouchableOpacity 
-                  style={[
-                    styles.checkoutBtn,
-                    calculateSelectedCount() === 0 && styles.checkoutBtnDisabled
-                  ]}
-                  onPress={handleCheckout}
-                  disabled={calculateSelectedCount() === 0}
-                >
-                  <Text style={styles.checkoutBtnText}>
-                    结算({calculateSelectedCount()})
-                  </Text>
-                </TouchableOpacity>
+                {isEditing ? (
+                  <>
+                    <View style={{ flex: 1 }} />
+                    <TouchableOpacity 
+                      style={[
+                        styles.checkoutBtn,
+                        calculateSelectedCount() === 0 && styles.checkoutBtnDisabled,
+                        { backgroundColor: calculateSelectedCount() === 0 ? '#ccc' : '#ff6b6b' }
+                      ]}
+                      onPress={handleRemoveSelected}
+                      disabled={calculateSelectedCount() === 0}
+                    >
+                      <Text style={styles.checkoutBtnText}>
+                        删除({calculateSelectedCount()})
+                      </Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.totalContainer}>
+                      <Text style={styles.totalLabel}>合计: </Text>
+                      <Text style={styles.totalPrice}>¥{calculateSelectedTotal().toFixed(2)}</Text>
+                    </View>
+                    
+                    <TouchableOpacity 
+                      style={[
+                        styles.checkoutBtn,
+                        calculateSelectedCount() === 0 && styles.checkoutBtnDisabled
+                      ]}
+                      onPress={handleCheckout}
+                      disabled={calculateSelectedCount() === 0}
+                    >
+                      <Text style={styles.checkoutBtnText}>
+                        结算({calculateSelectedCount()})
+                      </Text>
+                    </TouchableOpacity>
+                  </>
+                )}
               </View>
             </>
           )}
@@ -795,35 +983,30 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
-  container: {
+  header: {
     flexDirection: 'row',
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  tab: {
-    flex: 1,
     alignItems: 'center',
-    paddingVertical: 10,
+    justifyContent: 'center',
+    paddingHorizontal: 15,
+    paddingTop: 50,
+    paddingBottom: 12,
+    position: 'relative',
   },
-  activeTab: {
-    borderBottomWidth: 2,
-    borderBottomColor: '#8069E1',
-  },
-  tabText: {
-    fontSize: 16,
-    color: '#666',
-  },
-  activeTabText: {
-    color: '#8069E1',
+  headerTitle: {
+    fontSize: 18,
     fontWeight: 'bold',
+    color: '#333',
+  },
+  cartIconBtn: {
+    position: 'absolute',
+    right: 15,
+    top: 50,
+    padding: 5,
   },
   cartBadge: {
     position: 'absolute',
-    top: 2,
-    right: 30,
+    top: -2,
+    right: -8,
     backgroundColor: '#ff6b6b',
     borderRadius: 10,
     minWidth: 18,
@@ -849,7 +1032,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
     borderRadius: 20,
     paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingVertical: 10,
     marginHorizontal: 15,
     marginTop: 10,
   },
@@ -860,6 +1043,49 @@ const styles = StyleSheet.create({
     outlineWidth: 0,
     outlineStyle: 'none',
     borderWidth: 0,
+  },
+  blindBoxBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: 15,
+    marginTop: 12,
+    padding: 14,
+    backgroundColor: '#8069E1',
+    borderRadius: 14,
+  },
+  blindBoxBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  blindBoxBannerEmoji: {
+    fontSize: 32,
+    marginRight: 12,
+  },
+  blindBoxBannerText: {
+    flex: 1,
+  },
+  blindBoxBannerTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 2,
+  },
+  blindBoxBannerDesc: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.8)',
+  },
+  blindBoxBannerBtn: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  blindBoxBannerBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 'bold',
   },
   waterfallContainer: {
     flexDirection: 'row',
@@ -914,6 +1140,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  shopNameLink: {
+    maxWidth: '60%',
+  },
+  shopNameText: {
+    fontSize: 11,
+    color: '#8069E1',
+  },
   metaText: {
     fontSize: 12,
     color: '#999',
@@ -956,6 +1189,24 @@ const styles = StyleSheet.create({
   cartContent: {
     flex: 1,
   },
+  cartHeaderBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 15,
+    paddingTop: 50,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  cartBackBtn: {
+    padding: 5,
+  },
+  cartHeaderTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -986,7 +1237,27 @@ const styles = StyleSheet.create({
   },
   cartList: {
     flex: 1,
+  },
+  shopGroup: {
+    backgroundColor: '#fff',
+    marginBottom: 10,
+  },
+  shopHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 15,
+    paddingVertical: 10,
+    backgroundColor: '#fff',
+  },
+  shopCheckboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  shopHeaderName: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#333',
   },
   cartHeader: {
     flexDirection: 'row',
@@ -1028,6 +1299,7 @@ const styles = StyleSheet.create({
   cartItem: {
     flexDirection: 'row',
     alignItems: 'flex-start',
+    paddingHorizontal: 15,
     paddingVertical: 15,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
@@ -1050,6 +1322,27 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   cartItemBrand: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 2,
+  },
+  shopNameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+    gap: 4,
+  },
+  shopName: {
+    fontSize: 12,
+    color: '#8069E1',
+    fontWeight: '500',
+  },
+  saleSeriesName: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 2,
+  },
+  variantName: {
     fontSize: 12,
     color: '#666',
     marginBottom: 2,
@@ -1095,6 +1388,15 @@ const styles = StyleSheet.create({
   },
   deleteBtn: {
     padding: 8,
+  },
+  cartItemEditing: {
+    position: 'relative',
+  },
+  deleteBtnEditing: {
+    position: 'absolute',
+    bottom: 15,
+    right: 15,
+    padding: 4,
   },
   cartFooter: {
     flexDirection: 'row',

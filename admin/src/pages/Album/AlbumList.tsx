@@ -538,14 +538,14 @@ const AlbumList: React.FC = () => {
       title: '封面',
       dataIndex: 'coverImage',
       key: 'coverImage',
-      width: 80,
+      width: 60,
       render: (img: string) => (
         <Image
-          width={50}
-          height={50}
+          width={36}
+          height={36}
           src={getFullImageUrl(img)}
           style={{ objectFit: 'cover', borderRadius: 4 }}
-          fallback="https://via.placeholder.com/50x50?text=No+Image"
+          fallback="https://via.placeholder.com/36x36?text=No+Image"
         />
       ),
     },
@@ -553,6 +553,11 @@ const AlbumList: React.FC = () => {
       title: '系列名称',
       dataIndex: 'seriesName',
       key: 'seriesName',
+      render: (text: string, record: Series) => (
+        <a onClick={(e) => { e.stopPropagation(); handleSelect([`series_${record.seriesId}`], {} as any); }} style={{ color: '#1a56db' }}>
+          {text}
+        </a>
+      ),
     },
     {
       title: '款式数',
@@ -580,15 +585,16 @@ const AlbumList: React.FC = () => {
     {
       title: '操作',
       key: 'action',
-      width: 150,
+      width: 120,
+      fixed: 'right' as const,
       render: (_: any, record: Series) => (
         <Space size="small">
-          <Tooltip title="编辑">
-            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditSeries(record)} />
-          </Tooltip>
-          <Tooltip title="删除">
-            <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={() => handleDeleteSeries(record)} />
-          </Tooltip>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditSeries(record)}>
+            编辑
+          </Button>
+          <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={() => handleDeleteSeries(record)}>
+            删除
+          </Button>
         </Space>
       ),
     },
@@ -599,14 +605,14 @@ const AlbumList: React.FC = () => {
       title: '图片',
       dataIndex: 'productImages',
       key: 'productImages',
-      width: 80,
+      width: 60,
       render: (img: string) => (
         <Image
-          width={50}
-          height={50}
+          width={36}
+          height={36}
           src={getFullImageUrl(img)}
           style={{ objectFit: 'cover', borderRadius: 4 }}
-          fallback="https://via.placeholder.com/50x50?text=No+Image"
+          fallback="https://via.placeholder.com/36x36?text=No+Image"
         />
       ),
     },
@@ -614,6 +620,11 @@ const AlbumList: React.FC = () => {
       title: '款式名称',
       dataIndex: 'productName',
       key: 'productName',
+      render: (text: string) => (
+        <a onClick={(e) => { e.stopPropagation(); }} style={{ color: '#1890ff' }}>
+          {text}
+        </a>
+      ),
     },
     {
       title: '价格',
@@ -654,14 +665,15 @@ const AlbumList: React.FC = () => {
       title: '操作',
       key: 'action',
       width: 120,
+      fixed: 'right' as const,
       render: (_: any, record: Product) => (
         <Space size="small">
-          <Tooltip title="编辑">
-            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditProduct(record)} />
-          </Tooltip>
-          <Tooltip title="删除">
-            <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={() => handleDeleteProduct(record)} />
-          </Tooltip>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditProduct(record)}>
+            编辑
+          </Button>
+          <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={() => handleDeleteProduct(record)}>
+            删除
+          </Button>
         </Space>
       ),
     },
@@ -717,7 +729,7 @@ const AlbumList: React.FC = () => {
             columns={seriesColumns}
             dataSource={seriesList}
             rowKey="seriesId"
-            size="small"
+            size="middle"
             pagination={false}
             locale={{ emptyText: '暂无系列' }}
           />
@@ -814,8 +826,8 @@ const AlbumList: React.FC = () => {
   );
 
   return (
-    <div style={{ padding: 6 }}>
-      <Card 
+    <div style={{ padding: 16 }}>
+      <Card
         title={
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>图鉴管理</span>
@@ -824,7 +836,7 @@ const AlbumList: React.FC = () => {
             </Button>
           </div>
         }
-        style={{ marginBottom: 16 }} 
+        style={{ marginBottom: 0 }} 
         styles={{ body: { display: 'none' } }}
       />
 

@@ -37,16 +37,13 @@ const Login = () => {
         // 登录成功，保存用户信息和token
         await AsyncStorage.setItem('userInfo', JSON.stringify(data.data.user));
         await AsyncStorage.setItem('token', data.data.token || data.data.accessToken);
-        await AsyncStorage.setItem('refreshToken', data.data.refreshToken || '');
         await AsyncStorage.setItem('userId', data.data.user.userId || data.data.user.id);
         
-        // 保存 token 过期时间
-        const expiresIn = data.data.expiresIn || 1800; // 默认30分钟
-        const tokenExpireTime = Date.now() + expiresIn * 1000;
+        // 7天长期token过期时间
+        const tokenExpireTime = Date.now() + 7 * 24 * 60 * 60 * 1000;
         await AsyncStorage.setItem('tokenExpireTime', tokenExpireTime.toString());
         
         console.log('[登录] userId 已保存:', data.data.user.userId || data.data.user.id);
-        console.log('[登录] token 过期时间:', new Date(tokenExpireTime).toLocaleString());
         // 跳转到首页
         router.push('/');
       } else {

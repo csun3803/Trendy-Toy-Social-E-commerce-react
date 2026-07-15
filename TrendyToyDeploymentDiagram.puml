@@ -1,0 +1,194 @@
+@startuml 潮玩社交电商系统部署图
+
+!define RECTANGLE class
+skinparam component {
+    BackgroundColor<<Frontend>> #E3F2FD
+    BorderColor<<Frontend>> #1976D2
+    BackgroundColor<<Backend>> #E8F5E9
+    BorderColor<<Backend>> #388E3C
+    BackgroundColor<<Database>> #FFF3E0
+    BorderColor<<Database>> #F57C00
+    BackgroundColor<<Infrastructure>> #F3E5F5
+    BorderColor<<Infrastructure>> #7B1FA2
+    BackgroundColor<<External>> #FFFDE7
+    BorderColor<<External>> #FBC02D
+}
+
+skinparam node {
+    BackgroundColor #F5F5F5
+    BorderColor #9E9E9E
+}
+
+title 潮玩社交电商系统 - 部署架构图
+
+' ====== 用户层 ======
+actor "移动用户\n(iOS/Android)" as UserMobile
+actor "平台管理员\n(Web浏览器)" as AdminUser
+actor "商家管理员\n(Web浏览器)" as MerchantUser
+
+' ====== 前端层 ======
+node "客户端层" {
+    component "React Native App\n(Expo)" as MobileApp <<Frontend>> {
+        port 8081
+    }
+    component "管理后台\n(Ant Design Pro)" as AdminWeb <<Frontend>> {
+        port 8000
+    }
+}
+
+' ====== CDN/静态资源层 ======
+node "CDN/静态资源" {
+    component "图片CDN\n(七牛云/阿里云OSS)" as ImageCDN <<Infrastructure>>
+    component "静态资源服务器\n(Nginx)" as StaticServer <<Infrastructure>>
+}
+
+' ====== 网关/负载均衡层 ======
+node "网关层" {
+    component "API网关\n(Nginx/Spring Cloud Gateway)" as ApiGateway <<Infrastructure>>
+    component "负载均衡器" as LoadBalancer <<Infrastructure>>
+}
+
+' ====== 后端服务层 ======
+node "应用服务器集群" {
+    component "用户服务\n(Spring Boot)" as UserService <<Backend>> {
+        port 8080
+    }
+    component "订单服务\n(Spring Boot)" as OrderService <<Backend>> {
+        port 8081
+    }
+    component "商品服务\n(Spring Boot)" as ProductService <<Backend>> {
+        port 8082
+    }
+    component "购物车服务\n(Spring Boot)" as CartService <<Backend>> {
+        port 8083
+    }
+    component "支付服务\n(Spring Boot)" as PaymentService <<Backend>> {
+        port 8084
+    }
+    component "社交服务\n(Spring Boot)" as SocialService <<Backend>> {
+        port 8085
+    }
+    component "店铺服务\n(Spring Boot)" as ShopService <<Backend>> {
+        port 8086
+    }
+    component "展示柜服务\n(Spring Boot)" as CabinetService <<Backend>> {
+        port 8087
+    }
+}
+
+' ====== 缓存层 ======
+node "缓存层" {
+    component "Redis集群" as RedisCache <<Infrastructure>>
+    component "Redis Session存储" as RedisSession <<Infrastructure>>
+}
+
+' ====== 数据层 ======
+node "数据存储层" {
+    database "MySQL主库" as MySQLMaster <<Database>>
+    database "MySQL从库" as MySQLSlave <<Database>>
+    database "文件存储\n(MinIO/OSS)" as FileStorage <<Database>>
+}
+
+' ====== 消息队列层 ======
+node "消息队列层" {
+    component "RabbitMQ\n消息队列" as MessageQueue <<Infrastructure>>
+}
+
+' ====== 外部系统 ======
+node "外部系统" {
+    component "微信支付" as WeChatPay <<External>>
+    component "支付宝" as Alipay <<External>>
+    component "短信服务" as SmsService <<External>>
+    component "推送服务" as PushService <<External>>
+}
+
+' ====== 连接关系 ======
+UserMobile --> MobileApp : HTTPS
+AdminUser --> AdminWeb : HTTPS
+MerchantUser --> AdminWeb : HTTPS
+
+MobileApp --> ImageCDN : 获取图片
+AdminWeb --> ImageCDN : 获取图片
+MobileApp --> StaticServer : 获取静态资源
+AdminWeb --> StaticServer : 获取静态资源
+
+MobileApp --> ApiGateway : REST API
+AdminWeb --> ApiGateway : REST API
+
+ApiGateway --> LoadBalancer : 转发请求
+LoadBalancer --> UserService : 负载均衡
+LoadBalancer --> OrderService : 负载均衡
+LoadBalancer --> ProductService : 负载均衡
+LoadBalancer --> CartService : 负载均衡
+LoadBalancer --> PaymentService : 负载均衡
+LoadBalancer --> SocialService : 负载均衡
+LoadBalancer --> ShopService : 负载均衡
+LoadBalancer --> CabinetService : 负载均衡
+
+UserService --> RedisCache : 缓存
+OrderService --> RedisCache : 缓存
+ProductService --> RedisCache : 缓存
+CartService --> RedisCache : 缓存
+SocialService --> RedisCache : 缓存
+ShopService --> RedisCache : 缓存
+CabinetService --> RedisCache : 缓存
+
+UserService --> RedisSession : Session
+OrderService --> RedisSession : Session
+
+UserService --> MySQLMaster : 读写
+OrderService --> MySQLMaster : 读写
+ProductService --> MySQLMaster : 读写
+CartService --> MySQLMaster : 读写
+PaymentService --> MySQLMaster : 读写
+SocialService --> MySQLMaster : 读写
+ShopService --> MySQLMaster : 读写
+CabinetService --> MySQLMaster : 读写
+
+UserService --> MySQLSlave : 读
+OrderService --> MySQLSlave : 读
+ProductService --> MySQLSlave : 读
+
+UserService --> FileStorage : 文件上传
+ProductService --> FileStorage : 文件上传
+SocialService --> FileStorage : 文件上传
+ShopService --> FileStorage : 文件上传
+
+OrderService --> MessageQueue : 异步消息
+PaymentService --> MessageQueue : 异步消息
+SocialService --> MessageQueue : 异步消息
+
+PaymentService --> WeChatPay : 支付请求
+PaymentService --> Alipay : 支付请求
+
+UserService --> SmsService : 发送短信
+SocialService --> PushService : 推送通知
+
+MySQLMaster --> MySQLSlave : 主从复制
+
+note right of ApiGateway
+  API网关职责：
+  - 请求路由
+  - 负载均衡
+  - 认证鉴权
+  - 限流熔断
+  - 日志监控
+end note
+
+note bottom of MySQLMaster
+  数据库分库策略：
+  - 用户库
+  - 订单库
+  - 商品库
+  - 社交库
+end note
+
+note top of MessageQueue
+  异步处理场景：
+  - 订单创建
+  - 支付回调
+  - 消息推送
+  - 数据同步
+end note
+
+@enduml

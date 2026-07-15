@@ -14,6 +14,9 @@ import { Svg, Path } from 'react-native-svg';
 import { useLocalSearchParams, router } from 'expo-router';
 import type { SeriesDetail, Product } from '../../types';
 import { getSeriesDetail } from '../../services/seriesService';
+import { checkFavorite, toggleFavorite } from '../../services/favoriteService';
+import { reportUserBehavior } from '../../services/aiRecommendService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { config } from '../../config';
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -87,12 +90,36 @@ export default function SeriesDetailPage() {
   const [seriesData, setSeriesData] = useState<SeriesData | null>(null);
   const [products, setProducts] = useState<ProductData[]>([]);
   const [error, setError] = useState('');
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
 
   useEffect(() => {
     if (id) {
       fetchSeriesDetail();
+      checkFavoriteStatus();
+      // 上报浏览行为，供AI推荐算法使用（fire-and-forget）
+      (async () => {
+        try {
+          const userId = await AsyncStorage.getItem('userId');
+          if (userId) {
+            reportUserBehavior(userId, 'BROWSE', 'SERIES', String(id), 1);
+          }
+        } catch (e) {
+          // 静默忽略
+        }
+      })();
     }
   }, [id]);
+
+  const checkFavoriteStatus = async () => {
+    if (!id) return;
+    try {
+      const status = await checkFavorite(id);
+      setIsFavorite(status);
+    } catch (error) {
+      console.error('检查收藏状态失败:', error);
+    }
+  };
 
   const fetchSeriesDetail = async () => {
     setLoading(true);
@@ -184,6 +211,37 @@ export default function SeriesDetailPage() {
     Alert.alert('提示', '分享功能');
   };
 
+  const handleFavorite = async () => {
+    if (!id || favoriteLoading) return;
+
+    setFavoriteLoading(true);
+    try {
+      const result = await toggleFavorite(id);
+      setIsFavorite(result.isFavorite);
+      Alert.alert('提示', result.isFavorite ? '收藏成功' : '已取消收藏');
+      // 上报收藏/取消收藏行为，权重高于浏览(3)
+      (async () => {
+        try {
+          const userId = await AsyncStorage.getItem('userId');
+          if (userId) {
+            reportUserBehavior(
+              userId,
+              result.isFavorite ? 'FAVORITE' : 'UNFAVORITE',
+              'SERIES',
+              String(id),
+              3
+            );
+          }
+        } catch (e) {}
+      })();
+    } catch (error) {
+      console.error('收藏操作失败:', error);
+      Alert.alert('提示', '操作失败，请重试');
+    } finally {
+      setFavoriteLoading(false);
+    }
+  };
+
   const handleProductClick = (productName: string) => {
     Alert.alert('提示', `点击了 ${productName}`);
   };
@@ -201,20 +259,34 @@ export default function SeriesDetailPage() {
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={goBack} style={styles.backButton}>
-          <Svg width={24} height={24} viewBox="0 0 1024 1024">
-            <Path d="M724 218.3V141c0-6.7-7.7-10.4-12.9-6.3L260.3 486.8c-16.4 12.8-16.4 37.5 0 50.3l450.8 352.1c5.3 4.1 12.9 0.4 12.9-6.3v-77.3c0-4.9-2.3-9.6-6.1-12.6l-360-281 360-281.1c3.8-3 6.1-7.7 6.1-12.6z" fill="#333"/>
-          </Svg>
+              <Svg width={25} height={25} viewBox="0 0 1024 1024" fill="none">
+                <Path
+                  d="M732.794579 1020.867765a58.608941 58.608941 0 0 1-41.803294-17.558589L247.478814 553.984a60.446118 60.446118 0 0 1 0-84.720941L690.991285 19.847529a58.578824 58.578824 0 0 1 83.606588 0 60.446118 60.446118 0 0 1 0 84.720942L372.979049 511.638588 774.597873 918.588235a60.446118 60.446118 0 0 1 0 84.720941 58.608941 58.608941 0 0 1-41.803294 17.558589z"
+                  fill="#3C3C3C"
+                />
+              </Svg>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>玩具系列</Text>
-        <TouchableOpacity onPress={handleShare} style={styles.shareButton}>
-
-        <Svg width={22} height={22} viewBox="0 0 1236 1024" fill="none">
-          <Path
-            d="M741.885532 1018.335144c-28.324281 0-50.932207-11.329712-73.540133-28.272782-22.659425-22.659425-39.653993-50.880708-39.653993-84.869845V792.049889c-124.420841 0-328.046671 33.989137-435.575941 181.069403-16.994568 28.272782-56.597063 45.215852-90.534701 50.880708h-16.994568c-56.545564-11.329712-90.483203-62.21042-84.818347-118.807483 28.324281-243.228324 113.142627-418.632871 260.222893-537.440354 107.477771-84.869845 231.950111-130.085697 367.700664-141.41541V118.858982c0-50.932207 22.659425-96.199557 67.926775-113.142627 39.602494-11.329712 84.869845-5.664856 118.807484 28.272782l362.035807 367.700664c28.324281 22.659425 45.318849 56.597063 50.983706 96.199557 5.613357 39.602494-5.664856 79.204989-33.989137 107.477771-5.664856 5.664856-11.329712 16.994568-22.659425 22.659425l-350.706095 356.370952c-22.659425 22.659425-50.932207 33.989137-79.204989 33.989137z m-90.534701-339.376383h90.534701v226.233756l356.370951-367.700664 5.664857-5.664856c5.664856-5.664856 5.664856-16.994568 5.664856-22.659425 0-11.329712-5.664856-16.94307-11.329713-22.607926l-5.664856-5.664856-356.370951-362.035808v214.955542l-79.204989 5.664856c-118.807483 0-231.950111 39.602494-328.149668 113.142628-113.142627 90.534701-186.68276 237.614967-209.290686 429.962583 141.415409-175.353048 390.360089-203.677329 531.775498-203.677329z"
-            fill="#666666"
-          />
-        </Svg>
-        </TouchableOpacity>
+        <View style={styles.headerRightButtons}>
+          <TouchableOpacity onPress={handleFavorite} style={styles.favoriteButton} disabled={favoriteLoading}>
+            <Svg width={24} height={24} viewBox="0 0 1024 1024" fill="none">
+              <Path
+                d="M781.186088 616.031873q17.338645 80.573705 30.59761 145.848606 6.119522 27.537849 11.219124 55.075697t9.689243 49.976096 7.649402 38.247012 4.079681 19.888446q3.059761 20.398406-9.179283 27.027888t-27.537849 6.629482q-5.099602 0-14.788845-3.569721t-14.788845-5.609562l-266.199203-155.027888q-72.414343 42.836653-131.569721 76.494024-25.498008 14.278884-50.486056 28.557769t-45.386454 26.517928-35.187251 20.398406-19.888446 10.199203q-10.199203 5.099602-20.908367 3.569721t-19.378486-7.649402-12.749004-14.788845-2.039841-17.848606q1.01992-4.079681 5.099602-19.888446t9.179283-37.737052 11.729084-48.446215 13.768924-54.055777q15.298805-63.23506 34.677291-142.788845-60.175299-52.015936-108.111554-92.812749-20.398406-17.338645-40.286853-34.167331t-35.697211-30.59761-26.007968-22.438247-11.219124-9.689243q-12.239044-11.219124-20.908367-24.988048t-6.629482-28.047809 11.219124-22.438247 20.398406-10.199203l315.155378-28.557769 117.290837-273.338645q6.119522-16.318725 17.338645-28.047809t30.59761-11.729084q10.199203 0 17.848606 4.589641t12.749004 10.709163 8.669323 12.239044 5.609562 10.199203l114.231076 273.338645 315.155378 29.577689q20.398406 5.099602 28.557769 12.239044t8.159363 22.438247q0 14.278884-8.669323 24.988048t-21.928287 26.007968z"
+                fill={isFavorite ? '#FFD700' : 'none'}
+                stroke={isFavorite ? '#FFD700' : '#3C3C3C'}
+                strokeWidth={isFavorite ? "40" : "80"}
+              />
+            </Svg>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleShare} style={styles.shareButton}>
+            <Svg width={22} height={22} viewBox="0 0 1236 1024" fill="none">
+              <Path
+                d="M741.885532 1018.335144c-28.324281 0-50.932207-11.329712-73.540133-28.272782-22.659425-22.659425-39.653993-50.880708-39.653993-84.869845V792.049889c-124.420841 0-328.046671 33.989137-435.575941 181.069403-16.994568 28.272782-56.597063 45.215852-90.534701 50.880708h-16.994568c-56.545564-11.329712-90.483203-62.21042-84.818347-118.807483 28.324281-243.228324 113.142627-418.632871 260.222893-537.440354 107.477771-84.869845 231.950111-130.085697 367.700664-141.41541V118.858982c0-50.932207 22.659425-96.199557 67.926775-113.142627 39.602494-11.329712 84.869845-5.664856 118.807484 28.272782l362.035807 367.700664c28.324281 22.659425 45.318849 56.597063 50.983706 96.199557 5.613357 39.602494-5.664856 79.204989-33.989137 107.477771-5.664856 5.664856-11.329712 16.994568-22.659425 22.659425l-350.706095 356.370952c-22.659425 22.659425-50.932207 33.989137-79.204989 33.989137z m-90.534701-339.376383h90.534701v226.233756l356.370951-367.700664 5.664857-5.664856c5.664856-5.664856 5.664856-16.994568 5.664856-22.659425 0-11.329712-5.664856-16.94307-11.329713-22.607926l-5.664856-5.664856-356.370951-362.035808v214.955542l-79.204989 5.664856c-118.807483 0-231.950111 39.602494-328.149668 113.142628-113.142627 90.534701-186.68276 237.614967-209.290686 429.962583 141.415409-175.353048 390.360089-203.677329 531.775498-203.677329z"
+                fill="#3C3C3C"
+              />
+            </Svg>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
@@ -250,21 +322,30 @@ export default function SeriesDetailPage() {
         <View style={styles.tagsContainer}>
           <TouchableOpacity style={styles.tagItem}>
             <Text style={styles.tagText}>{seriesData?.theme || '盲盒'}</Text>
-            <Svg width={14} height={14} viewBox="0 0 1024 1024">
-              <Path d="M338.944 176.928L847.072 512 338.944 847.072c-27.328 27.328-71.808 27.328-99.136 0s-27.328-71.808 0-99.136l414.08-414.08-414.08-414.08c-27.328-27.328-27.328-71.808 0-99.136s71.808-27.328 99.136 0z" fill="#999"/>
-            </Svg>
+              <Svg width={11} height={11} viewBox="0 0 1024 1024" fill="none" style={{ transform: [{ scaleX: -1 }] }}>
+                <Path
+                  d="M732.794579 1020.867765a58.608941 58.608941 0 0 1-41.803294-17.558589L247.478814 553.984a60.446118 60.446118 0 0 1 0-84.720941L690.991285 19.847529a58.578824 58.578824 0 0 1 83.606588 0 60.446118 60.446118 0 0 1 0 84.720942L372.979049 511.638588 774.597873 918.588235a60.446118 60.446118 0 0 1 0 84.720941 58.608941 58.608941 0 0 1-41.803294 17.558589z"
+                  fill="#666666"
+                />
+              </Svg>
           </TouchableOpacity>
           <TouchableOpacity style={styles.tagItem}>
             <Text style={styles.tagText}>泡泡玛特</Text>
-            <Svg width={14} height={14} viewBox="0 0 1024 1024">
-              <Path d="M338.944 176.928L847.072 512 338.944 847.072c-27.328 27.328-71.808 27.328-99.136 0s-27.328-71.808 0-99.136l414.08-414.08-414.08-414.08c-27.328-27.328-27.328-71.808 0-99.136s71.808-27.328 99.136 0z" fill="#999"/>
-            </Svg>
+              <Svg width={11} height={11} viewBox="0 0 1024 1024" fill="none" style={{ transform: [{ scaleX: -1 }] }}>
+                <Path
+                  d="M732.794579 1020.867765a58.608941 58.608941 0 0 1-41.803294-17.558589L247.478814 553.984a60.446118 60.446118 0 0 1 0-84.720941L690.991285 19.847529a58.578824 58.578824 0 0 1 83.606588 0 60.446118 60.446118 0 0 1 0 84.720942L372.979049 511.638588 774.597873 918.588235a60.446118 60.446118 0 0 1 0 84.720941 58.608941 58.608941 0 0 1-41.803294 17.558589z"
+                  fill="#666666"
+                />
+              </Svg>
           </TouchableOpacity>
           <TouchableOpacity style={styles.tagItem}>
             <Text style={styles.tagText}>盲盒系列</Text>
-            <Svg width={14} height={14} viewBox="0 0 1024 1024">
-              <Path d="M338.944 176.928L847.072 512 338.944 847.072c-27.328 27.328-71.808 27.328-99.136 0s-27.328-71.808 0-99.136l414.08-414.08-414.08-414.08c-27.328-27.328-27.328-71.808 0-99.136s71.808-27.328 99.136 0z" fill="#999"/>
-            </Svg>
+              <Svg width={11} height={11} viewBox="0 0 1024 1024" fill="none" style={{ transform: [{ scaleX: -1 }] }}>
+                <Path
+                  d="M732.794579 1020.867765a58.608941 58.608941 0 0 1-41.803294-17.558589L247.478814 553.984a60.446118 60.446118 0 0 1 0-84.720941L690.991285 19.847529a58.578824 58.578824 0 0 1 83.606588 0 60.446118 60.446118 0 0 1 0 84.720942L372.979049 511.638588 774.597873 918.588235a60.446118 60.446118 0 0 1 0 84.720941 58.608941 58.608941 0 0 1-41.803294 17.558589z"
+                  fill="#666666"
+                />
+              </Svg>
           </TouchableOpacity>
         </View>
 
@@ -296,61 +377,7 @@ export default function SeriesDetailPage() {
               />
               <Text style={styles.variantName} numberOfLines={1}>{item.productName}</Text>
               <View style={styles.variantPriceContainer}>
-                <Svg width={20} height={20} viewBox="0 0 1024 1024">
-                  <Path d="M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448 448-200.6 448-448S759.4 64 512 64zm192 472c0 4.4-3.6 8-8 8h-56v56c0 4.4-3.6 8-8 8h-48c-4.4 0-8-3.6-8-8v-56h-56c-4.4 0-8-3.6-8-8v-48c0-4.4 3.6-8 8-8h56v-56c0-4.4 3.6-8 8-8h48c4.4 0 8 3.6 8 8v56h56c4.4 0 8 3.6 8 8v48z" fill="#FF6B6B"/>
-                </Svg>
                 <Text style={styles.variantPrice}>¥{item.price}</Text>
-              </View>
-              <Text style={styles.variantWantCount}>1.3w 想要</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <View style={styles.discussionHeader}>
-          <Text style={styles.discussionTitle}>讨论</Text>
-          <TouchableOpacity style={styles.postButton}>
-            <Text style={styles.postButtonText}>去发帖</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.viewMoreButton}>
-            <Text style={styles.viewMoreText}>查看更多</Text>
-            <Svg width={14} height={14} viewBox="0 0 1024 1024">
-              <Path d="M338.944 176.928L847.072 512 338.944 847.072c-27.328 27.328-71.808 27.328-99.136 0s-27.328-71.808 0-99.136l414.08-414.08-414.08-414.08c-27.328-27.328-27.328-71.808 0-99.136s71.808-27.328 99.136 0z" fill="#666"/>
-            </Svg>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.discussionContainer}>
-          {[1, 2, 3].map((index) => (
-            <TouchableOpacity key={index} style={styles.discussionItem}>
-              <View style={styles.discussionContent}>
-                <Text style={styles.discussionTitleItem}>
-                  {index === 1 ? '一人一句此娃萌点，不好听不要说' : 
-                   index === 2 ? 'Dimoo背上小书包📚' : 
-                   'DIMOO新生系列 四抽准确无踩雷！'}
-                </Text>
-                <View style={styles.discussionAuthor}>
-                  <View style={styles.authorAvatar}>
-                    <Text style={styles.authorAvatarText}>
-                      {index === 1 ? '鱼' : index === 2 ? '橘' : 'M'}
-                    </Text>
-                  </View>
-                  <Text style={styles.authorName}>
-                    {index === 1 ? '鱼鱼鱼' : index === 2 ? '橘络' : 'Magic'}
-                  </Text>
-                </View>
-                <View style={styles.discussionStats}>
-                  <View style={styles.commentItem}>
-                    <Svg width={20} height={20} viewBox="0 0 1024 1024">
-                      <Path d="M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448 448-200.6 448-448S759.4 64 512 64zm0 560c-4.4 0-8-3.6-8-8v-64c0-4.4 3.6-8 8-8s8 3.6 8 8v64c0 4.4-3.6 8-8 8zm0-240c-26.5 0-48 21.5-48 48s21.5 48 48 48 48-21.5 48-48-21.5-48-48-48z" fill="#999"/>
-                    </Svg>
-                    <Text style={styles.commentCount}>
-                      {index === 1 ? '3' : index === 2 ? '6' : '回复'}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-              <View style={styles.discussionImage}>
-                <Text style={styles.discussionImageText}>图</Text>
               </View>
             </TouchableOpacity>
           ))}
@@ -365,13 +392,13 @@ export default function SeriesDetailPage() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFE4E1',
+    backgroundColor: '#EDE9FE',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FFE4E1',
+    backgroundColor: '#EDE9FE',
   },
   loadingText: {
     marginTop: 10,
@@ -385,7 +412,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 50,
     paddingBottom: 10,
-    backgroundColor: '#FFE4E1',
+    backgroundColor: '#EDE9FE',
   },
   backButton: {
     padding: 8,
@@ -394,6 +421,14 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
+  },
+  headerRightButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  favoriteButton: {
+    padding: 8,
+    marginRight: 4,
   },
   shareButton: {
     padding: 8,
@@ -404,7 +439,7 @@ const styles = StyleSheet.create({
   seriesHeader: {
     flexDirection: 'row',
     padding: 16,
-    backgroundColor: '#FFE4E1',
+    backgroundColor: '#EDE9FE',
   },
   seriesCover: {
     width: 140,
@@ -455,7 +490,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: 16,
     paddingVertical: 8,
-    backgroundColor: '#FFE4E1',
+    backgroundColor: '#EDE9FE',
   },
   tagItem: {
     flexDirection: 'row',
@@ -535,111 +570,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#999',
     marginTop: 4,
-  },
-  discussionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginTop: 8,
-    backgroundColor: '#FFE4E1',
-  },
-  discussionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  postButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#fff',
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    marginHorizontal: 6,
-  },
-  postButtonText: {
-    fontSize: 12,
-    color: '#666',
-  },
-  viewMoreButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  viewMoreText: {
-    fontSize: 12,
-    color: '#666',
-    marginRight: 4,
-  },
-  discussionContainer: {
-    paddingHorizontal: 12,
-    paddingBottom: 16,
-  },
-  discussionItem: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 8,
-  },
-  discussionContent: {
-    flex: 1,
-  },
-  discussionTitleItem: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#333',
-    lineHeight: 20,
-    marginBottom: 8,
-  },
-  discussionAuthor: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  authorAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    marginRight: 8,
-    backgroundColor: '#e0e0e0',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  authorAvatarText: {
-    fontSize: 14,
-    color: '#666',
-    fontWeight: 'bold',
-  },
-  authorName: {
-    fontSize: 12,
-    color: '#666',
-  },
-  discussionStats: {
-    flexDirection: 'row',
-  },
-  commentItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  commentCount: {
-    fontSize: 12,
-    color: '#666',
-    marginLeft: 4,
-  },
-  discussionImage: {
-    width: 70,
-    height: 70,
-    borderRadius: 8,
-    marginLeft: 8,
-    backgroundColor: '#f0f0f0',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  discussionImageText: {
-    fontSize: 16,
-    color: '#999',
   },
   bottomPlaceholder: {
     height: 30,

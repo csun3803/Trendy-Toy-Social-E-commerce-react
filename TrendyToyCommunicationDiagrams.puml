@@ -1,0 +1,89 @@
+
+@startuml 潮玩社交电商系统通信图
+skinparam backgroundColor #f4f6f8
+skinparam componentStyle rectangle
+skinparam noteBackgroundColor #fffde6
+skinparam noteBorderColor #ffd700
+title 潮玩社交电商系统 - 通信图（对象协作关系）
+
+actor "用户" as User
+
+participant "App客户端" as App
+participant "购物车页面" as CartPage
+participant "结算页面" as CheckoutPage
+participant "订单页面" as OrderPage
+
+participant "购物车服务" as CartService
+participant "订单服务" as OrderService
+participant "用户服务" as UserService
+participant "支付服务" as PaymentService
+participant "售后服务" as AfterSaleService
+
+database "购物车数据库" as CartDB
+database "订单数据库" as OrderDB
+database "用户数据库" as UserDB
+
+== 购物流程协作 ==
+
+User -> App : 1. 打开App
+App -> CartPage : 2. 进入购物车
+CartPage -> CartService : 3. getCartList(userId)
+CartService -> CartDB : 4. 查询购物车数据
+CartDB --> CartService : 5. 返回购物车项
+CartService --> CartPage : 6. 返回购物车数据
+CartPage --> User : 7. 展示购物车
+
+CartPage -> CheckoutPage : 8. 点击结算
+CheckoutPage -> UserService : 9. getUserAddresses()
+UserService -> UserDB : 10. 查询地址
+UserDB --> UserService : 11. 返回地址列表
+UserService --> CheckoutPage : 12. 返回地址数据
+
+CheckoutPage -> OrderService : 13. batchCreateOrders()
+OrderService -> OrderDB : 14. 创建订单记录
+OrderDB --> OrderService : 15. 订单创建成功
+OrderService -> CartService : 16. 清除已结算商品
+CartService -> CartDB : 17. 删除购物车项
+CartDB --> CartService : 18. 删除成功
+OrderService --> CheckoutPage : 19. 返回订单列表
+CheckoutPage -> OrderPage : 20. 跳转订单详情
+
+note over CartPage, CheckoutPage
+  购物车到结算的完整协作
+  包含商品验证和订单创建
+end note
+
+== 订单管理协作 ==
+
+User -> App : 1. 进入订单中心
+App -> OrderPage : 2. 显示订单页面
+OrderPage -> OrderService : 3. getUserOrders(userId)
+OrderService -> OrderDB : 4. 查询订单列表
+OrderDB --> OrderService : 5. 返回订单数据
+OrderService --> OrderPage : 6. 返回订单列表
+OrderPage --> User : 7. 展示订单列表
+
+OrderPage -> OrderService : 8. payOrder(orderId)
+OrderService -> PaymentService : 9. 发起支付
+PaymentService --> OrderService : 10. 支付结果
+OrderService -> OrderDB : 11. 更新订单状态
+OrderDB --> OrderService : 12. 更新成功
+OrderService --> OrderPage : 13. 支付成功
+
+OrderPage -> OrderService : 14. confirmReceive(orderId)
+OrderService -> OrderDB : 15. 更新订单状态
+OrderDB --> OrderService : 16. 更新成功
+OrderService --> OrderPage : 17. 确认收货成功
+
+OrderPage -> AfterSaleService : 18. createAfterSale(request)
+AfterSaleService -> OrderDB : 19. 创建售后记录
+OrderDB --> AfterSaleService : 20. 保存成功
+AfterSaleService --> OrderPage : 21. 返回申请成功
+
+note over OrderService, AfterSaleService
+  订单全生命周期管理
+  包含支付、收货、售后
+end note
+
+@enduml
+

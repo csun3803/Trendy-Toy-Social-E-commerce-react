@@ -1,0 +1,270 @@
+@startuml TrendyToySocialECommerceClassDiagram
+' 潮玩社交电商系统 - UML类图（简洁版）
+
+skinparam classAttributeIconSize 0
+skinparam class {
+    BackgroundColor<<Entity>> LightBlue
+    BackgroundColor<<Service>> LightGreen
+    ArrowColor Gray
+    BorderColor DarkGray
+}
+
+' ====== 用户模块 ======
+class User <<Entity>> {
+    - userId: String
+    - username: String
+    - phoneNumber: String
+    - avatarUrl: String
+    - accountStatus: String
+}
+
+class ShopAdmin <<Entity>> {
+    - adminId: String
+    - shopId: String
+    - passwordHash: String
+}
+
+class PlatformAdmin <<Entity>> {
+    - adminId: String
+    - employeeId: String
+    - passwordHash: String
+}
+
+class UserAddress <<Entity>> {
+    - addressId: String
+    - userId: String
+    - recipientName: String
+    - fullAddress: String
+}
+
+' ====== 店铺模块 ======
+class Shop <<Entity>> {
+    - shopId: String
+    - shopName: String
+    - shopType: String
+    - auditStatus: String
+    - shopStatus: String
+}
+
+class ShopCertificationFile <<Entity>> {
+    - fileId: String
+    - shopId: String
+    - fileType: String
+}
+
+' ====== 商品模块 ======
+class TechnicalIpAlbum <<Entity>> {
+    - albumId: String
+    - ipName: String
+}
+
+class Series <<Entity>> {
+    - seriesId: String
+    - seriesName: String
+    - ipAlbumId: String
+}
+
+class Product <<Entity>> {
+    - productId: String
+    - name: String
+    - price: BigDecimal
+    - seriesId: String
+    - hiddenVariant: Boolean
+}
+
+class SaleSeries <<Entity>> {
+    - saleSeriesId: String
+    - shopId: String
+    - seriesId: String
+    - saleTitle: String
+}
+
+class SaleVariant <<Entity>> {
+    - saleVariantId: String
+    - saleSeriesId: String
+    - shopId: String
+    - salePrice: BigDecimal
+}
+
+' ====== 订单模块 ======
+class Order <<Entity>> {
+    - orderId: String
+    - orderNo: String
+    - userId: String
+    - actualAmount: BigDecimal
+    - orderStatus: String
+    - paymentStatus: String
+}
+
+class OrderItem <<Entity>> {
+    - orderItemId: String
+    - orderId: String
+    - productId: String
+    - quantity: Integer
+}
+
+class CartItem <<Entity>> {
+    - cartItemId: String
+    - userId: String
+    - shopId: String
+    - quantity: Integer
+}
+
+' ====== 收藏展示模块 ======
+class MyDisplayCabinet <<Entity>> {
+    - cabinetId: String
+    - userId: String
+    - cabinetName: String
+}
+
+class CabinetItem <<Entity>> {
+    - itemId: String
+    - cabinetId: String
+    - productId: String
+}
+
+' ====== 社交模块 ======
+class SocialActivity <<Entity>> {
+    - activityId: String
+    - userId: String
+    - title: String
+    - content: String
+}
+
+class FollowRelationship <<Entity>> {
+    - followerId: String
+    - followingId: String
+}
+
+class PrivateConversation <<Entity>> {
+    - conversationId: String
+    - userAId: String
+    - userBId: String
+}
+
+class PrivateMessage <<Entity>> {
+    - messageId: String
+    - conversationId: String
+    - senderId: String
+    - content: String
+}
+
+' ====== Service接口层 ======
+interface UserService <<Service>> {
+    + login(loginDTO: LoginDTO): User
+    + register(registerDTO: RegisterDTO): User
+    + getUserById(userId: String): User
+}
+
+interface ShopService <<Service>> {
+    + getShopList(page: int, size: int): Page&lt;Shop&gt;
+    + getShopById(shopId: String): Shop
+    + approveShop(shopId: String, auditorId: String): void
+}
+
+interface OrderService <<Service>> {
+    + createOrder(request: CreateOrderRequest): Order
+    + getOrderById(orderId: String): Order
+    + getOrdersByUserId(userId: String): List&lt;Order&gt;
+    + payOrder(orderId: String, paymentMethod: String): Order
+}
+
+interface CartService <<Service>> {
+    + getCartByUserId(userId: String): List&lt;CartItem&gt;
+    + addToCart(request: AddToCartRequest): CartItem
+    + clearCart(userId: String): void
+}
+
+interface CabinetService <<Service>> {
+    + getCabinetsByUserId(userId: String): List&lt;MyDisplayCabinet&gt;
+    + createCabinet(cabinet: MyDisplayCabinet): MyDisplayCabinet
+    + addItemToCabinet(cabinetId: String, item: CabinetItem): CabinetItem
+}
+
+interface SocialActivityService <<Service>> {
+    + getPublicActivities(page: int, size: int): Page&lt;SocialActivity&gt;
+    + createActivity(userId: String, activity: SocialActivity): SocialActivity
+    + likeActivity(userId: String, activityId: String): void
+}
+
+' ====== 关系定义 ======
+' 用户相关关系
+User "1" -- "*" UserAddress : has
+User "1" -- "*" FollowRelationship : follows
+FollowRelationship "*" -- "1" User : is followed by
+User "1" -- "*" MyDisplayCabinet : owns
+User "1" -- "*" SocialActivity : creates
+User "1" -- "*" PrivateConversation : participates
+User "1" -- "*" PrivateMessage : sends/receives
+User "1" -- "*" Order : places
+User "1" -- "*" CartItem : adds to cart
+
+' 店铺相关关系
+Shop "1" -- "*" ShopAdmin : managed by
+Shop "1" -- "*" ShopCertificationFile : has
+Shop "1" -- "*" SaleSeries : sells
+Shop "1" -- "*" SaleVariant : offers
+
+' 商品相关关系
+TechnicalIpAlbum "1" -- "*" Series : contains
+Series "1" -- "*" Product : includes
+SaleSeries "1" -- "*" SaleVariant : has variants
+SaleVariant "*" -- "1" Product : references
+SaleSeries "*" -- "1" Series : references
+
+' 订单相关关系
+Order "1" -- "*" OrderItem : contains
+OrderItem "*" -- "1" Product : references
+OrderItem "*" -- "1" Shop : belongs to
+CartItem "*" -- "1" User : belongs to
+CartItem "*" -- "1" Shop : from
+
+' 收藏展示相关关系
+MyDisplayCabinet "1" -- "*" CabinetItem : contains
+CabinetItem "*" -- "1" Product : references
+
+' 社交相关关系
+SocialActivity "*" -- "1" User : created by
+PrivateConversation "1" -- "*" PrivateMessage : contains
+PrivateMessage "*" -- "1" PrivateConversation : belongs to
+
+' 管理员关系
+PlatformAdmin "1" -- "*" Shop : audits
+PlatformAdmin "1" -- "*" SocialActivity : audits
+ShopAdmin "1" -- "1" Shop : manages
+
+' Service与Entity的关系
+UserService ..> User : uses
+ShopService ..> Shop : uses
+OrderService ..> Order : uses
+OrderService ..> OrderItem : uses
+CartService ..> CartItem : uses
+CabinetService ..> MyDisplayCabinet : uses
+CabinetService ..> CabinetItem : uses
+SocialActivityService ..> SocialActivity : uses
+
+note right of User
+  系统用户
+end note
+
+note right of Shop
+  店铺实体
+end note
+
+note bottom of Product
+  潮玩商品
+end note
+
+note right of Order
+  订单实体
+end note
+
+note bottom of MyDisplayCabinet
+  展示柜
+end note
+
+note right of SocialActivity
+  社交活动
+end note
+
+@enduml

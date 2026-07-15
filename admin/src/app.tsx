@@ -53,8 +53,11 @@ export async function getInitialState(): Promise<{
         return {
           ...userData,
           access: userType,
-          name: userType === 'admin' ? userData.adminId : userData.shopName || userData.shopId,
+          name: userType === 'admin' 
+            ? userData.adminId 
+            : userData.shopName || userData.shopId || userData.adminId,
           avatar: userData.logo || userData.avatar,
+          auditStatus: userType === 'merchant' ? userData.auditStatus : undefined,
         };
       }
     } catch (error) {
@@ -109,6 +112,18 @@ export const layout: RunTimeLayoutConfig = ({
       // 如果没有登录，重定向到 login
       if (!initialState?.currentUser && location.pathname !== loginPath) {
         history.push(loginPath);
+      }
+      // 如果已登录且访问根路径，根据用户类型跳转到对应仪表盘
+      if (initialState?.currentUser && location.pathname === '/') {
+        if (initialState.currentUser.access === 'merchant') {
+          if (initialState.currentUser.auditStatus === '已通过') {
+            history.push('/merchant-center/dashboard');
+          } else {
+            history.push('/merchant/apply');
+          }
+        } else if (initialState.currentUser.access === 'admin') {
+          history.push('/admin-dashboard');
+        }
       }
     },
     bgLayoutImgList: [

@@ -8,7 +8,8 @@ export const getSaleSeriesList = async (params: {
   keyword?: string;
 }) => {
   try {
-    const response = await api.get<ApiResponse<SaleSeriesListResponse>>('/sale-series', params);
+    // API可能返回直接的数组或包含data的对象
+    const response = await api.get<any>('/sale-series', params);
     return response;
   } catch (error) {
     console.error('Failed to fetch sale series list:', error);

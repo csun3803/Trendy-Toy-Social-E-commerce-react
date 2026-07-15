@@ -1,0 +1,54 @@
+@startuml 潮玩社交电商系统活动图总图
+skinparam activity {
+    BackgroundColor #E8F5E9
+    BorderColor #4CAF50
+    ArrowColor #455A64
+}
+skinparam note {
+    BackgroundColor #FFF8E1
+    BorderColor #FFA000
+}
+
+title 潮玩社交电商系统 - 主要业务流程总图（优化版）
+
+start
+
+:用户注册/登录;
+
+fork
+    :浏览潮玩商品;
+    if (是否加入购物车?) then (是)
+        :加入购物车;
+        :继续浏览;
+    endif
+    :下单购买;
+    :支付订单;
+    :等待发货;
+    :确认收货;
+    :评价商品;
+    :添加到个人展示柜;
+    :发布社交活动 (关联商品);
+fork again
+    :商家入驻申请;
+    :平台审核商家;
+    if (审核通过?) then (是)
+        :上架/管理商品;
+        :接收新订单;
+        :处理发货;
+    else (否)
+        :修改入驻资料;
+        :重新提交审核;
+    endif
+fork again
+    :平台管理员登录;
+    :审核商家入驻;
+    :审核用户发布的社交活动;
+    :管理用户账户/权限;
+end fork
+
+:用户间互动 (点赞/评论/私信);
+:关注其他用户动态;
+
+stop
+
+@enduml

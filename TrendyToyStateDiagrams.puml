@@ -1,0 +1,192 @@
+@startuml 潮玩社交电商系统状态图
+
+skinparam state {
+    BackgroundColor<<Order>> #E3F2FD
+    BorderColor<<Order>> #1976D2
+    BackgroundColor<<Payment>> #E8F5E9
+    BorderColor<<Payment>> #388E3C
+    BackgroundColor<<Shop>> #FFF3E0
+    BorderColor<<Shop>> #F57C00
+    BackgroundColor<<User>> #F3E5F5
+    BorderColor<<User>> #7B1FA2
+    ArrowColor #455A64
+}
+
+title 潮玩社交电商系统 - 状态图集合
+
+' ====== 订单状态图 ======
+state "订单状态机" as OrderState {
+    [*] --> PENDING_PAYMENT : 创建订单
+    
+    state PENDING_PAYMENT : 待支付
+    state PAID : 已支付
+    state SHIPPED : 已发货
+    state DELIVERED : 已送达
+    state COMPLETED : 已完成
+    state CANCELLED : 已取消
+    state REFUNDING : 退款中
+    state REFUNDED : 已退款
+    
+    PENDING_PAYMENT --> PAID : 支付成功
+    PENDING_PAYMENT --> CANCELLED : 支付超时/用户取消
+    
+    PAID --> SHIPPED : 商家发货
+    PAID --> REFUNDING : 申请退款
+    PAID --> CANCELLED : 商家取消
+    
+    SHIPPED --> DELIVERED : 确认收货
+    SHIPPED --> REFUNDING : 申请售后
+    
+    DELIVERED --> COMPLETED : 订单完成
+    DELIVERED --> REFUNDING : 申请售后
+    
+    REFUNDING --> REFUNDED : 退款成功
+    REFUNDING --> PAID : 退款拒绝
+    REFUNDING --> SHIPPED : 退款拒绝
+    REFUNDING --> DELIVERED : 退款拒绝
+    
+    CANCELLED --> [*]
+    COMPLETED --> [*]
+    REFUNDED --> [*]
+}
+
+note right of OrderState
+  订单核心状态流转：
+  创建→待支付→已支付→已发货
+  →已送达→已完成
+  各环节支持取消/退款
+end note
+
+' ====== 支付状态图 ======
+state "支付状态机" as PaymentState {
+    [*] --> UNPAID : 初始化
+    
+    state UNPAID : 未支付
+    state PAYING : 支付中
+    state PAID : 支付成功
+    state PAYMENT_FAILED : 支付失败
+    state REFUNDING : 退款中
+    state PARTIAL_REFUNDED : 部分退款
+    state FULLY_REFUNDED : 全额退款
+    
+    UNPAID --> PAYING : 发起支付
+    
+    PAYING --> PAID : 支付成功
+    PAYING --> PAYMENT_FAILED : 支付失败
+    PAYMENT_FAILED --> UNPAID : 重新支付
+    
+    PAID --> REFUNDING : 申请退款
+    
+    REFUNDING --> PARTIAL_REFUNDED : 部分退款成功
+    REFUNDING --> FULLY_REFUNDED : 全额退款成功
+    REFUNDING --> PAID : 退款失败/拒绝
+    
+    PARTIAL_REFUNDED --> REFUNDING : 再次申请退款
+    
+    FULLY_REFUNDED --> [*]
+}
+
+note right of PaymentState
+  支付状态与订单状态联动
+  支持部分退款和全额退款
+end note
+
+' ====== 店铺审核状态图 ======
+state "店铺审核状态机" as ShopState {
+    [*] --> DRAFT : 创建店铺
+    
+    state DRAFT : 草稿
+    state PENDING_AUDIT : 待审核
+    state AUDITING : 审核中
+    state AUDIT_PASSED : 审核通过
+    state AUDIT_REJECTED : 审核拒绝
+    state OPERATING : 运营中
+    state SUSPENDED : 已暂停
+    state CLOSED : 已关闭
+    
+    DRAFT --> PENDING_AUDIT : 提交审核
+    
+    PENDING_AUDIT --> AUDITING : 开始审核
+    
+    AUDITING --> AUDIT_PASSED : 审核通过
+    AUDITING --> AUDIT_REJECTED : 审核拒绝
+    
+    AUDIT_REJECTED --> DRAFT : 修改资料
+    
+    AUDIT_PASSED --> OPERATING : 开始营业
+    
+    OPERATING --> SUSPENDED : 违规暂停
+    OPERATING --> CLOSED : 主动关闭
+    
+    SUSPENDED --> OPERATING : 整改通过
+    SUSPENDED --> CLOSED : 永久关闭
+    
+    CLOSED --> [*]
+}
+
+note right of ShopState
+  店铺从申请到运营的完整生命周期
+  支持暂停、恢复、关闭等操作
+end note
+
+' ====== 用户账户状态图 ======
+state "用户账户状态机" as UserState {
+    [*] --> INACTIVE : 注册未激活
+    
+    state INACTIVE : 未激活
+    state ACTIVE : 正常
+    state LOCKED : 已锁定
+    state BANNED : 已封禁
+    state DELETED : 已注销
+    
+    INACTIVE --> ACTIVE : 激活账户
+    
+    ACTIVE --> LOCKED : 多次登录失败
+    ACTIVE --> BANNED : 违规封禁
+    ACTIVE --> DELETED : 用户注销
+    
+    LOCKED --> ACTIVE : 解锁/重置密码
+    
+    BANNED --> [*]
+    DELETED --> [*]
+}
+
+note right of UserState
+  用户账户的完整状态管理
+  安全机制：锁定、封禁等
+end note
+
+' ====== 社交活动状态图 ======
+state "社交活动状态机" as ActivityState {
+    [*] --> DRAFT : 创建活动
+    
+    state DRAFT : 草稿
+    state PENDING_REVIEW : 待审核
+    state REVIEWING : 审核中
+    state PUBLISHED : 已发布
+    state REVIEW_REJECTED : 审核拒绝
+    state HIDDEN : 已隐藏
+    state DELETED : 已删除
+    
+    DRAFT --> PENDING_REVIEW : 提交发布
+    
+    PENDING_REVIEW --> REVIEWING : 开始审核
+    
+    REVIEWING --> PUBLISHED : 审核通过
+    REVIEWING --> REVIEW_REJECTED : 审核拒绝
+    
+    REVIEW_REJECTED --> DRAFT : 修改内容
+    
+    PUBLISHED --> HIDDEN : 用户隐藏
+    PUBLISHED --> DELETED : 用户删除/平台删除
+    
+    HIDDEN --> PUBLISHED : 恢复显示
+    
+    DELETED --> [*]
+}
+
+note right of ActivityState
+  社交活动的发布、审核、管理流程
+end note
+
+@enduml

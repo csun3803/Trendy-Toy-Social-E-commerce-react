@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Button, Table, Tag, Space, App, Modal, Form, Input, Select, Image, Steps, Row, Col, Pagination, Popconfirm } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, SettingOutlined, ArrowRightOutlined } from '@ant-design/icons';
+import { Card, Button, Table, Tag, Space, App, Modal, Form, Input, Select, Image, Steps, Row, Col, Pagination, Popconfirm, Dropdown, MenuProps, Upload } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, SettingOutlined, ArrowRightOutlined, MoreOutlined, UploadOutlined } from '@ant-design/icons';
 import { request, history } from '@umijs/max';
 
 const { TextArea } = Input;
@@ -123,16 +123,22 @@ const SaleSeries: React.FC = () => {
     }
   }, [isModalVisible, currentStep]);
 
+  const getActionMenuItems = (record: SaleSeries): MenuProps['items'] => [
+    { key: 'manage', label: '管理', icon: <SettingOutlined />, onClick: () => handleManage(record.saleSeriesId) },
+    { key: 'edit', label: '编辑', icon: <EditOutlined />, onClick: () => handleEdit(record) },
+    { key: 'delete', label: '删除', icon: <DeleteOutlined />, danger: true, onClick: () => handleDelete(record.saleSeriesId) }
+  ];
+
   const columns = [
     {
       title: '封面',
       dataIndex: 'saleCoverImage',
       key: 'saleCoverImage',
-      width: 100,
+      width: 60,
       render: (image: string) => (
         <Image
-          width={60}
-          height={60}
+          width={36}
+          height={36}
           src={getFullImageUrl(image)}
           style={{ objectFit: 'cover', borderRadius: 4 }}
           fallback="https://neeko-copilot.bytedance.net/api/text2image?prompt=product%20placeholder%20image&size=60x60"
@@ -172,12 +178,16 @@ const SaleSeries: React.FC = () => {
     {
       title: '操作',
       key: 'action',
+      width: 60,
+      fixed: 'right' as const,
       render: (_: any, record: SaleSeries) => (
-        <Space size="middle">
-          <Button type="link" icon={<SettingOutlined />} onClick={() => handleManage(record.saleSeriesId)}>管理</Button>
-          <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
-          <Button type="link" danger icon={<DeleteOutlined />} onClick={() => handleDelete(record.saleSeriesId)}>删除</Button>
-        </Space>
+        <Dropdown
+          menu={{ items: getActionMenuItems(record) }}
+          trigger={['hover']}
+          placement="bottomRight"
+        >
+          <Button type="text" size="small" icon={<MoreOutlined />} />
+        </Dropdown>
       ),
     },
   ];
@@ -187,11 +197,11 @@ const SaleSeries: React.FC = () => {
       title: '封面',
       dataIndex: 'coverImage',
       key: 'coverImage',
-      width: 80,
+      width: 60,
       render: (image: string) => (
         <Image
-          width={50}
-          height={50}
+          width={36}
+          height={36}
           src={getFullImageUrl(image)}
           style={{ objectFit: 'cover', borderRadius: 4 }}
           fallback="https://neeko-copilot.bytedance.net/api/text2image?prompt=product%20placeholder%20image&size=60x60"
@@ -386,7 +396,7 @@ const SaleSeries: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: 24 }}>
+    <div style={{ padding: 16 }}>
       <Card
         title="销售系列管理"
         extra={
@@ -454,7 +464,7 @@ const SaleSeries: React.FC = () => {
               loading={seriesLoading}
               rowKey="seriesId"
               pagination={false}
-              size="small"
+              size="middle"
               rowSelection={{
                 type: 'radio',
                 selectedRowKeys: selectedSeries ? [selectedSeries.seriesId] : [],
@@ -511,7 +521,41 @@ const SaleSeries: React.FC = () => {
               name="saleCoverImage"
               label="封面图片"
             >
-              <Input placeholder="请输入封面图片URL" />
+              <Upload
+                name="file"
+                action={`${API_BASE_URL}/api/upload/image?type=series`}
+                listType="picture-card"
+                maxCount={1}
+                headers={{
+                  Authorization: `Bearer ${localStorage.getItem('token')}`,
+                }}
+                onChange={(info) => {
+                  if (info.file.status === 'done') {
+                    const url = info.file.response?.data?.url;
+                    if (url) {
+                      form.setFieldValue('saleCoverImage', url);
+                    }
+                  } else if (info.file.status === 'error') {
+                    message.error('上传失败');
+                  }
+                }}
+                onRemove={() => {
+                  form.setFieldValue('saleCoverImage', undefined);
+                }}
+              >
+                {form.getFieldValue('saleCoverImage') ? (
+                  <Image
+                    src={getFullImageUrl(form.getFieldValue('saleCoverImage'))}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    preview={false}
+                  />
+                ) : (
+                  <div>
+                    <UploadOutlined />
+                    <div style={{ marginTop: 8 }}>上传</div>
+                  </div>
+                )}
+              </Upload>
             </Form.Item>
             <Form.Item
               name="saleStatus"
